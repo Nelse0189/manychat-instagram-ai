@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // The webhook uses the Firebase Admin SDK, which bypasses these rules.
+    // Client SDK access is denied. These validators are a prototype for a
+    // future authenticated admin client. Review them before allowing any
+    // client read or write.
+    //
+    // Collection: subscribers
+    // Document ID: ManyChat subscriber id (string, 1-128 chars)
+    // Fields:
+    //   - subscriberId: string (required, immutable)
+    //   - firstName: string or null (optional, max 200)
+    //   - igUsername: string or null (optional, max 200)
+    //   - optedOut: bool (required)
+    //   - needsHuman: bool (required)
+    //   - createdAt: string (required, ISO timestamp)
+    //   - updatedAt: string (required, ISO timestamp)
+    //
+    // Collection: subscribers/{subscriberId}/messages
+    // Document ID: auto-id
+    // Fields:
+    //   - role: string "user" or "assistant" (required, immutable)
+    //   - text: string (required, 1-4000 chars, immutable)
+    //   - createdAt: string (required, ISO timestamp, immutable)
+    //
+    // Collection: orders
+    // Document ID: auto-id
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - reference: string (required, immutable, AL- plus 6 hex chars)
+    //   - subscriberId: string (required, immutable)
+    //   - packId: string photo_1 | photo_3 | photo_5 | video_1 | video_3 | video_5 (required, immutable)
+    //   - packName: string (required, immutable)
+    //   - amountUsd: number 15, 25, 40, 60, or 90 (required, immutable)
+    //   - currency: string "USD" (required, immutable)
+    //   - status: string quoted | pending_verification | verified | cancelled (required)
+    //   - fileNames: list of strings (optional until verified)
+    //   - downloadToken: string or null (optional until verified)
+    //   - createdAt: string (required, immutable)
+    //   - updatedAt: string (required)
+    //
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function validString(field, minLen, maxLen) {
+      return request.resource.data[field] is string
+        && request.resource.data[field].size() >= minLen
+        && request.resource.data[field].size() <= maxLen;
+    }
+
+    function isIsoTimestamp(field) {
+      return request.resource.data[field] is string
+        && request.resource.data[field].matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z$");
+    }
+
+    function isValidSubscriber() {
+      return hasOnlyAllowedFields([
+          "subscriberId", "firstName", "igUsername", "optedOut", "needsHuman", "createdAt", "updatedAt"
+        ])
+        && hasRequiredFields(["subscriberId", "optedOut", "needsHuman", "createdAt", "updatedAt"])
+        && validString("subscriberId", 1, 128)
+        && request.resource.data.optedOut is bool
+        && request.resource.data.needsHuman is bool
+        && isIsoTimestamp("createdAt")
+        && isIsoTimestamp("updatedAt");
+    }
+
+    function isValidMessage() {
+      return hasOnlyAllowedFields(["role", "text", "createdAt"])
+        && hasRequiredFields(["role", "text", "createdAt"])
+        && request.resource.data.role in ["user", "assistant"]
+        && validString("text", 1, 4000)
+        && isIsoTimestamp("createdAt");
+    }
+
+    function isValidOrder() {
+      return hasOnlyAllowedFields([
+          "id", "reference", "subscriberId", "packId", "packName", "amountUsd", "currency", "status", "fileNames", "downloadToken", "createdAt", "updatedAt"
+        ])
+        && hasRequiredFields([
+          "id", "reference", "subscriberId", "packId", "packName", "amountUsd", "currency", "status", "createdAt", "updatedAt"
+        ])
+        && request.resource.data.packId in ["photo_1", "photo_3", "photo_5", "video_1", "video_3", "video_5"]
+        && request.resource.data.amountUsd in [15, 25, 40, 60, 90]
+        && request.resource.data.currency == "USD"
+        && request.resource.data.status in ["quoted", "pending_verification", "verified", "cancelled"]
+        && request.resource.data.reference is string
+        && request.resource.data.reference.matches("^AL-[A-F0-9]{6}$")
+        && isIsoTimestamp("createdAt")
+        && isIsoTimestamp("updatedAt");
+    }
+
+    match /subscribers/{subscriberId} {
+      allow read: if false;
+      allow create: if isAuthenticated() && isValidSubscriber() && false;
+      allow update: if isAuthenticated() && isValidSubscriber() && areImmutableFieldsUnchanged(["subscriberId", "createdAt"]) && false;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if false;
+        allow create: if isAuthenticated() && isValidMessage() && false;
+        allow update: if isAuthenticated() && isValidMessage() && areImmutableFieldsUnchanged(["role", "text", "createdAt"]) && false;
+        allow delete: if false;
+      }
+    }
+
+    match /orders/{orderId} {
+      allow read: if false;
+      allow create: if isAuthenticated() && isValidOrder() && false;
+      allow update: if isAuthenticated()
+        && isValidOrder()
+        && areImmutableFieldsUnchanged(["id", "reference", "subscriberId", "packId", "packName", "amountUsd", "currency", "createdAt"])
+        && false;
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
