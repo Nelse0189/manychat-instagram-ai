@@ -8,7 +8,7 @@ const ctx: SalesContext = {
   shopHandle: "arial_luxe",
   paymentsEnabled: false,
   venmoHandle: "bluejays0137",
-  cashAppTag: "Arialarias",
+  cashAppTag: "Arialluxe",
   optedOut: false,
   openOrder: null,
 };
@@ -32,7 +32,7 @@ test("a pack quote stays closed while payments are disabled", () => {
   assert.equal(decision?.packId, "photo_3");
   assert.equal(decision?.orderAction, "quote");
   assert.match(decision!.reply, /Checkout is not open yet/);
-  assert.doesNotMatch(decision!.reply, /bluejays0137|Arialarias/);
+  assert.doesNotMatch(decision!.reply, /bluejays0137|Arialluxe/);
 });
 
 test("unrelated numbers do not select a pack", () => {
