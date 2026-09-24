@@ -5,5 +5,18 @@
     "edition": "enterprise",
     "database": "shop",
     "location": "nam5"
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "shop-assistant",
+          "region": "us-central1"
+        }
+      }
+    ]
   }
 }

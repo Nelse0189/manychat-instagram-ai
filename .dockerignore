@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+.env.*
+dist
+firebase-debug.log
+firebase-debug.*.log
+**/*.md

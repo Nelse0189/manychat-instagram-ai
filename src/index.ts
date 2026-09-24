@@ -163,6 +163,6 @@ app.get("/downloads/:token/:index", async (req, res) => {
   res.download(filePath);
 });
 
-app.listen(config.port, () => {
+app.listen(config.port, "0.0.0.0", () => {
   console.log(`Shop assistant listening on ${config.port}`);
 });
