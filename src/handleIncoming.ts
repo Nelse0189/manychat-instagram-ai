@@ -1,11 +1,18 @@
 import { packById } from "./catalog.js";
 import { config } from "./config.js";
+import { releaseOrderFiles } from "./fulfill.js";
 import { orderReference } from "./memoryStore.js";
 import { paymentInstructions } from "./sales.js";
 import type { Store } from "./store.js";
 import { emptySubscriber } from "./store.js";
 import type { Decision, IncomingMessage } from "./types.js";
-import { decideDeterministic, decisionFromModel, type SalesContext } from "./sales.js";
+import {
+  decideDeterministic,
+  decisionFromModel,
+  filesReadyText,
+  textShowsPaymentScreenshot,
+  type SalesContext,
+} from "./sales.js";
 import { completeReply } from "./openrouter.js";
 
 function salesContext(
@@ -30,7 +37,9 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
 
   const openOrder = await store.latestOpenOrder(incoming.subscriberId);
   const ctx = salesContext(openOrder, subscriber.optedOut);
-  let decision = decideDeterministic(incoming.text, ctx);
+  const paymentScreenshot =
+    incoming.paymentScreenshot === true || textShowsPaymentScreenshot(incoming.text);
+  let decision = decideDeterministic(incoming.text, ctx, { paymentScreenshot });
 
   if (!decision) {
     const history = await store.recentMessages(incoming.subscriberId, 12);
@@ -55,6 +64,24 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
       if (config.paymentsEnabled) {
         decision = { ...decision, reply: paymentInstructions(order, ctx) };
       }
+    }
+  }
+
+  if (decision.orderAction === "fulfill" && openOrder) {
+    const released = await releaseOrderFiles(store, openOrder);
+    if ("downloads" in released && released.downloads.length > 0) {
+      decision = {
+        ...decision,
+        reply: filesReadyText(released.order.reference, released.downloads),
+        needsHuman: false,
+      };
+    } else {
+      decision = {
+        ...decision,
+        reply: "Got the screenshot. I can't send the files just yet, so I'll have someone follow up.",
+        needsHuman: true,
+        orderAction: null,
+      };
     }
   }
 

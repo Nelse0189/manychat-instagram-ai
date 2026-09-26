@@ -61,12 +61,53 @@ export function optOutText(): string {
   return "You're opted out of promotional messages. Message CATALOG if you want to browse, or SUPPORT if you need help with an order.";
 }
 
-export function paymentInstructions(order: Order, ctx: SalesContext): string {
-  return `For ${order.packName} at ${order.amountUsd} USD, send the money to ${payWith(ctx)}. Put order reference ${order.reference} in the payment note. The files are sent after that payment shows up in Venmo or Cash App. A screenshot is not treated as payment.`;
+const IMAGE_PLACEHOLDER =
+  /^[\[(<{]\s*(?:image|img|photo|picture|pic|screenshot|screen[\s-]?shot|attachment|media|file)\s*[\]>)}][.!]?\s*$/i;
+const BARE_IMAGE_PLACEHOLDER = /^(?:image|img)[.!]?\s*$/i;
+const ATTACHMENT_CLAIM =
+  /\b(?:here(?:'|’)?s|here is|this is|attached|attaching|sent|sending|just sent|included)\b[\s\S]{0,60}\b(?:screenshot|screen[\s-]?shot|receipt|proof of payment)\b|\b(?:screenshot|screen[\s-]?shot|receipt)\b[\s\S]{0,40}\b(?:attached|sent|included|above|here)\b|\bproof of payment\b/i;
+
+export function isPaymentImageUrl(raw: string): boolean {
+  const cleaned = raw.trim().replace(/[),.;]+$/, "");
+  if (!/^https?:\/\//i.test(cleaned)) return false;
+  if (/\.(?:mp3|m4a|ogg|wav|aac|mp4|mov|m4v|webm)(?:$|\?|#)/i.test(cleaned)) return false;
+  try {
+    const url = new URL(cleaned);
+    const host = url.hostname.toLowerCase();
+    if (
+      host === "lookaside.fbsbx.com" ||
+      host.endsWith(".fbsbx.com") ||
+      host.endsWith(".fbcdn.net") ||
+      host === "fbcdn.net" ||
+      host.endsWith(".cdninstagram.com") ||
+      host === "cdninstagram.com"
+    ) {
+      return true;
+    }
+    return /\.(?:jpe?g|png|gif|webp|heic|heif)$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
 }
 
-export function paidClaimText(reference: string): string {
-  return `Thanks! I've flagged order ${reference} for payment verification. We'll send the download after the payment has been matched to your order. A screenshot is not treated as payment.`;
+export function textShowsPaymentScreenshot(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || (trimmed.includes("{{") && trimmed.includes("}}"))) return false;
+  if (IMAGE_PLACEHOLDER.test(trimmed) || BARE_IMAGE_PLACEHOLDER.test(trimmed)) return true;
+  if (ATTACHMENT_CLAIM.test(trimmed)) return true;
+  return (trimmed.match(/https?:\/\/[^\s<>"']+/gi) ?? []).some(isPaymentImageUrl);
+}
+
+export function paymentInstructions(order: Order, ctx: SalesContext): string {
+  return `${order.packName} is ${order.amountUsd} USD. ${payWith(ctx)}. Put ${order.reference} in the note, then send me a screenshot.`;
+}
+
+export function paidClaimText(_reference: string): string {
+  return "Send me a screenshot of the payment and I'll send the files.";
+}
+
+export function filesReadyText(reference: string, downloads: string[]): string {
+  return `Got the screenshot. Here are your files for ${reference}:\n${downloads.join("\n")}`;
 }
 
 export function checkoutClosedText(packName: string, amountUsd: number): string {
@@ -100,14 +141,14 @@ function packFromText(text: string): PackId | null {
   return null;
 }
 
-export function decideDeterministic(text: string, ctx: SalesContext): Decision | null {
+export function decideDeterministic(
+  text: string,
+  ctx: SalesContext,
+  input: { paymentScreenshot?: boolean } = {},
+): Decision | null {
   const trimmed = text.trim();
-  if (!trimmed) {
-    return decision({
-      reply: welcomeText(ctx.shopHandle),
-      intent: "browse",
-    });
-  }
+  const paymentScreenshot =
+    input.paymentScreenshot === true || textShowsPaymentScreenshot(trimmed);
 
   if (OPT_OUT.test(trimmed)) {
     return decision({ reply: optOutText(), intent: "opt_out" });
@@ -115,6 +156,35 @@ export function decideDeterministic(text: string, ctx: SalesContext): Decision |
 
   if (SUPPORT.test(trimmed)) {
     return decision({ reply: supportText(), intent: "support", needsHuman: true });
+  }
+
+  if (paymentScreenshot) {
+    if (!ctx.paymentsEnabled) {
+      return decision({
+        reply: "Checkout isn't open yet, so I can't send files for that screenshot.",
+        intent: "payment_claim",
+      });
+    }
+    if (!ctx.openOrder) {
+      return decision({
+        reply:
+          "I don't have an order open yet. Tell me the pack you want, like ONE PHOTO or ONE VIDEO, and I'll tell you where to pay.",
+        intent: "payment_claim",
+      });
+    }
+    return decision({
+      reply: "",
+      intent: "payment_claim",
+      packId: ctx.openOrder.packId,
+      orderAction: "fulfill",
+    });
+  }
+
+  if (!trimmed) {
+    return decision({
+      reply: welcomeText(ctx.shopHandle),
+      intent: "browse",
+    });
   }
 
   if (PAID.test(trimmed)) {
@@ -138,7 +208,6 @@ export function decideDeterministic(text: string, ctx: SalesContext): Decision |
       intent: "payment_claim",
       packId: ctx.openOrder.packId,
       orderAction: "claim_payment",
-      needsHuman: true,
     });
   }
 
@@ -200,8 +269,9 @@ export function systemPrompt(ctx: SalesContext): string {
     "Customers pay for photo or video files from this collection. Do not invent prices, discounts, exclusivity, or delivery status.",
     catalogSummary(),
     `The only payment destinations are Venmo @${ctx.venmoHandle.replace(/^@/, "")} and Cash App $${ctx.cashAppTag.replace(/^\$/, "")}.`,
-    "Never ask for card numbers, passwords, or treat a payment screenshot as verified payment.",
-    "Files are delivered only after a person matches the payment in Venmo or Cash App.",
+    "Never ask for card numbers or passwords.",
+    "After they pay, ask for a screenshot of the payment. If they only say they paid, ask for that screenshot.",
+    "When a screenshot arrives for an open order, the server sends the download links in the reply.",
     `Payments enabled: ${ctx.paymentsEnabled ? "yes" : "no"}.`,
     ctx.paymentsEnabled
       ? "If they choose a pack, set intent to purchase and packId. The server sends the payment instructions."

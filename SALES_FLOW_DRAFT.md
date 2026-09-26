@@ -9,7 +9,7 @@ Status: email verified and ManyChat workspace created (fb5630729). Instagram con
 - User confirms permission to sell these photos/videos and automate the process.
 - Signup email: nicholaselsener@gmail.com. User approved accepting ManyChat terms.
 - User-supplied payment handles: Venmo @bluejays0137; Cash App $Arialarias.
-- These handles alone do not provide payment verification. Until a supported authenticated integration is configured, require the seller to verify payment in their provider account before releasing files. A payment screenshot is insufficient.
+- These handles alone do not provide payment verification. A customer who only says they paid is asked for a screenshot. A screenshot for an open order releases the files.
 
 ## Setup inputs
 
@@ -30,8 +30,8 @@ Use USD as the starting currency, consistent with the supplied US payment servic
 
 - Welcome: “Hi! I'm the automated shop assistant for @arial_luxe. Want to browse the photo and video collections?”
 - Catalog: “Our curated collections contain previously published photos: one photo for $15 USD, three for $40 USD, or five for $60 USD. Want to see a sample and what's included?”
-- Payment, only after the selected pack is ready: “For [pack] at [amount] USD, use Venmo @bluejays0137 or Cash App $Arialarias. Include order reference [reference] in the note. A team member will verify receipt before sending your download. Delivery is not instant.”
-- Paid claim: “Thanks! I've flagged your order for payment verification. We'll send the download after the payment has been matched to your order.”
+- Payment, only after the selected pack is ready: “[pack] is [amount] USD. Venmo @bluejays0137 or Cash App $Arialluxe. Put [reference] in the note, then send me a screenshot.”
+- Paid claim, with no screenshot: “Send me a screenshot of the payment and I'll send the files.”
 - Decline: “No problem. You can message CATALOG whenever you'd like to browse.”
 - Human support: “I'll flag this for a team member. Please describe the issue here; don't send passwords or payment-card information.”
 - Opt-out: “You're opted out of promotional messages.”
@@ -42,7 +42,7 @@ Payment instructions must remain disabled until product files and delivery are r
 2. Greeting: “Hi! This is the automated shop assistant. Would you like to see the available photo or video packs?” Buttons: Photos / Videos / Support.
 3. Show an approved preview and a factual description of the selected product: number of files, formats, usage rights, price, currency, and delivery method. Never describe publicly available media as exclusive unless that claim is accurate.
 4. Offer: “The [pack name] includes [contents] for [price and currency]. You can review the details and purchase here: [checkout link].” Buttons: View pack / Other packs / Support.
-5. Checkout happens on the payment provider's page. Do not collect card details in Instagram messages. Never treat a customer's claim or screenshot as verified payment.
+5. Checkout happens on the payment provider's page. Do not collect card details in Instagram messages. A text claim that they paid does not release files. A payment screenshot for an open order does.
 6. Deliver through the checkout provider after verified payment. For custom fulfillment, authenticate payment webhooks, match product and amount, and deduplicate events before issuing a protected download link.
 7. Support: “For purchase or download help, contact [support].” Route unresolved questions to a human.
 8. Stop: “Understood—promotional messages are stopped.” Suppress further promotion after STOP, unsubscribe, or equivalent intent.

@@ -2,7 +2,7 @@
 
 Calling the ManyChat API, OpenRouter, and Firebase does not require a public URL. Those are outbound requests from this machine. ManyChat can only hand an incoming Instagram DM to this server by POSTing to a URL it can reach, and a customer's phone can only open a download link the same way. `PUBLIC_BASE_URL` is for those two inbound cases. It can be a tunnel to this computer. Nothing in this repo is deployed to a cloud host.
 
-Customers buy a photo or video pack from `media/hernandez_sari_`. Payment goes to Venmo @bluejays0137 or Cash App $Arialluxe, with the order reference in the note. Saying "I paid" does not release files. After you see the money in that account, `POST /admin/orders/:id/verify` picks the files and returns download links.
+Customers buy a photo or video pack from `media/hernandez_sari_`. Payment goes to Venmo @bluejays0137 or Cash App $Arialluxe, with the order reference in the note. The reply asks them to send a screenshot once it's sent. Saying "I paid" asks for that screenshot and does not release files. A screenshot for an open quoted or pending order sends the download links in the text reply. `POST /admin/orders/:id/verify` releases the same links.
 
 ## When you have the keys
 
@@ -44,4 +44,4 @@ curl -s http://localhost:8787/admin/orders?status=pending_verification \
   -H "authorization: Bearer $ADMIN_SECRET"
 ```
 
-`POST /admin/orders/:id/verify` records that you verified the payment. It does not deliver files.
+`POST /admin/orders/:id/verify` picks the files and returns the same download links a payment screenshot sends in the chat reply.

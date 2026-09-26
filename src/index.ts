@@ -1,15 +1,13 @@
-import { randomBytes } from "node:crypto";
 import express from "express";
-import { packById } from "./catalog.js";
 import { config, firebaseConfigured, missingProductionSecrets } from "./config.js";
 import { createFirestoreStore } from "./firestoreStore.js";
+import { releaseOrderFiles } from "./fulfill.js";
 import { handleIncoming } from "./handleIncoming.js";
-import { listCollectionFiles, pickFiles, resolveMediaFile } from "./library.js";
+import { resolveMediaFile } from "./library.js";
 import { dynamicBlock, parseIncoming } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
-import { supportText } from "./sales.js";
+import { filesReadyText, supportText } from "./sales.js";
 import type { Store } from "./store.js";
-import type { Order } from "./types.js";
 
 const missing = missingProductionSecrets();
 if (missing.length > 0) {
@@ -98,14 +96,6 @@ app.get("/admin/orders", async (req, res) => {
   res.json({ orders });
 });
 
-function downloadLinks(order: Order): string[] {
-  if (!order.downloadToken) return [];
-  const origin = config.publicBaseUrl || `http://localhost:${config.port}`;
-  return order.fileNames.map(
-    (_file, index) => `${origin}/downloads/${order.downloadToken}/${index}`,
-  );
-}
-
 app.post("/admin/orders/:id/verify", async (req, res) => {
   if (!adminAllowed(req.header("authorization") ?? req.header("x-admin-secret"))) {
     res.status(401).json({ error: "Unauthorized." });
@@ -116,34 +106,15 @@ app.post("/admin/orders/:id/verify", async (req, res) => {
     res.status(404).json({ error: "Order not found." });
     return;
   }
-  if (existing.status === "verified" && existing.downloadToken) {
-    res.json({ order: existing, downloads: downloadLinks(existing) });
+  const released = await releaseOrderFiles(store, existing);
+  if ("error" in released) {
+    res.status(released.status).json({ error: released.error });
     return;
   }
-  const pack = packById(existing.packId);
-  if (!pack) {
-    res.status(400).json({ error: "Order pack is not in the catalog." });
-    return;
-  }
-  const available = await listCollectionFiles(pack.kind);
-  if (available.length < pack.count) {
-    res.status(409).json({ error: `Only ${available.length} ${pack.kind} files are available.` });
-    return;
-  }
-  const order = await store.fulfillOrder(
-    existing.id,
-    pickFiles(available, pack.count),
-    randomBytes(24).toString("hex"),
-  );
-  if (!order) {
-    res.status(404).json({ error: "Order not found." });
-    return;
-  }
-  const downloads = downloadLinks(order);
   res.json({
-    order,
-    downloads,
-    messageToCustomer: `Payment for ${order.reference} is verified. Here are your files:\n${downloads.join("\n")}`,
+    order: released.order,
+    downloads: released.downloads,
+    messageToCustomer: filesReadyText(released.order.reference, released.downloads),
   });
 });
 

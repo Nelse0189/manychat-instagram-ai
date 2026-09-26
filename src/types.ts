@@ -45,6 +45,7 @@ export type IncomingMessage = {
   text: string;
   firstName: string | null;
   igUsername: string | null;
+  paymentScreenshot?: boolean;
 };
 
 export type Decision = {
@@ -53,5 +54,5 @@ export type Decision = {
   needsHuman: boolean;
   useModel: boolean;
   packId: PackId | null;
-  orderAction: "quote" | "claim_payment" | null;
+  orderAction: "quote" | "claim_payment" | "fulfill" | null;
 };
