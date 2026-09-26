@@ -1,5 +1,7 @@
 import { catalogSummary, packById, PACKS, type PackId } from "./catalog.js";
-import type { Decision, Order } from "./types.js";
+import type { ChatMessage, Decision, Order } from "./types.js";
+
+export type ReplyLanguage = "en" | "es";
 
 export type SalesContext = {
   shopHandle: string;
@@ -8,15 +10,141 @@ export type SalesContext = {
   cashAppTag: string;
   optedOut: boolean;
   openOrder: Order | null;
+  language?: ReplyLanguage;
 };
 
 const OPT_OUT = /^(stop|unsubscribe|opt[\s-]?out)$/i;
-const CATALOG = /^(catalog|menu|prices?)$/i;
-const PHOTOS = /^(photos?)$/i;
+const CATALOG = /^(catalog|menu|prices?|precio|precios|catalogo)$/i;
+const PHOTOS = /^(photos?|fotos?)$/i;
 const VIDEOS = /^(videos?)$/i;
 const SUPPORT = /^(support|human|agent)$/i;
 const PAID =
-  /\b(i paid|i've paid|ive paid|payment sent|sent the (money|payment)|just paid|paid you)\b/i;
+  /\b(i paid|i've paid|ive paid|payment sent|sent the (money|payment)|just paid|paid you|ya pague|te pague|ya te pague|ya lo pague|pague|ya mande el pago|ya envie el pago|pago enviado|hice el pago)\b/i;
+
+const IMAGE_PLACEHOLDER =
+  /^[\[(<{]\s*(?:image|img|photo|picture|pic|screenshot|screen[\s-]?shot|attachment|media|file)\s*[\]>)}][.!]?\s*$/i;
+const BARE_IMAGE_PLACEHOLDER = /^(?:image|img)[.!]?\s*$/i;
+const ATTACHMENT_CLAIM =
+  /\b(?:here(?:'|’)?s|here is|this is|attached|attaching|sent|sending|just sent|included)\b[\s\S]{0,60}\b(?:screenshot|screen[\s-]?shot|receipt|proof of payment)\b|\b(?:screenshot|screen[\s-]?shot|receipt)\b[\s\S]{0,40}\b(?:attached|sent|included|above|here)\b|\bproof of payment\b/i;
+const SPANISH_SCREENSHOT =
+  /\b(?:aqui|aca|ahi) (?:esta |va |te va )?(?:la )?(?:captura|comprobante)\b|\b(?:te mando|mira|adjunto|adjunta) (?:la )?(?:captura|comprobante)\b|\b(?:captura|comprobante) (?:adjunta|adjunto|enviada|enviado)\b/i;
+
+const AMBIGUOUS_SINGLE = new Set([
+  "hi",
+  "hey",
+  "ok",
+  "okay",
+  "k",
+  "kk",
+  "yo",
+  "sup",
+  "y",
+  "n",
+  "yes",
+  "no",
+  "ya",
+  "si",
+  "i",
+  "the",
+  "1",
+  "3",
+  "5",
+  "video",
+  "videos",
+]);
+
+const SPANISH_WORDS = new Set([
+  "hola",
+  "buenas",
+  "buenos",
+  "gracias",
+  "quiero",
+  "quieres",
+  "dime",
+  "manda",
+  "mandame",
+  "pague",
+  "pagado",
+  "pagaste",
+  "captura",
+  "porfa",
+  "porfavor",
+  "precio",
+  "precios",
+  "foto",
+  "fotos",
+  "una",
+  "uno",
+  "tres",
+  "cinco",
+  "archivo",
+  "archivos",
+  "todavia",
+  "cual",
+  "tambien",
+  "aqui",
+  "donde",
+  "enviame",
+  "cobrando",
+  "contigo",
+  "abierto",
+  "primero",
+  "tuyo",
+  "catalogo",
+  "dame",
+  "pasame",
+  "mande",
+  "envie",
+  "dinero",
+  "cuanto",
+  "comprobante",
+]);
+
+const ENGLISH_WORDS = new Set([
+  "hello",
+  "photo",
+  "photos",
+  "paid",
+  "payment",
+  "screenshot",
+  "want",
+  "please",
+  "thanks",
+  "thank",
+  "catalog",
+  "price",
+  "prices",
+  "send",
+  "file",
+  "files",
+  "one",
+  "three",
+  "five",
+  "heres",
+  "here's",
+  "attached",
+  "receipt",
+  "just",
+  "im",
+  "i'm",
+  "ive",
+  "i've",
+  "stop",
+  "unsubscribe",
+  "support",
+  "human",
+  "agent",
+  "menu",
+  "note",
+  "where",
+  "what",
+  "how",
+  "much",
+  "buy",
+  "order",
+  "pack",
+  "there",
+]);
 
 function decision(
   partial: Omit<Decision, "packId" | "orderAction" | "useModel" | "needsHuman"> &
@@ -31,60 +159,162 @@ function decision(
   };
 }
 
-export function welcomeText(_shopHandle: string): string {
-  return "hola. fotos o videos? dime y te paso precios.";
+function fold(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
-function payWith(ctx: SalesContext): string {
+export function detectMessageLanguage(text: string): ReplyLanguage | null {
+  const trimmed = text.trim();
+  if (!trimmed || (trimmed.includes("{{") && trimmed.includes("}}"))) return null;
+  if (IMAGE_PLACEHOLDER.test(trimmed) || BARE_IMAGE_PLACEHOLDER.test(trimmed)) return null;
+
+  const withoutUrls = trimmed.replace(/https?:\/\/\S+/gi, " ").replace(/\s+/g, " ").trim();
+  if (
+    !withoutUrls ||
+    IMAGE_PLACEHOLDER.test(withoutUrls) ||
+    BARE_IMAGE_PLACEHOLDER.test(withoutUrls) ||
+    !/\p{L}/u.test(withoutUrls)
+  ) {
+    return null;
+  }
+
+  const folded = fold(withoutUrls);
+  const tokens = folded.split(/[^a-z0-9']+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  if (tokens.length === 1 && AMBIGUOUS_SINGLE.has(tokens[0] ?? "")) return null;
+
+  let spanish = 0;
+  let english = 0;
+  let spanishHits = 0;
+  let englishHits = 0;
+  if (/[áéíóúüñ¿¡]/i.test(withoutUrls)) {
+    spanish += 3;
+    spanishHits += 1;
+  }
+
+  for (const token of tokens) {
+    if (SPANISH_WORDS.has(token)) {
+      spanish += 2;
+      spanishHits += 1;
+    }
+    if (ENGLISH_WORDS.has(token)) {
+      english += 2;
+      englishHits += 1;
+    }
+    if ((token === "hi" || token === "hey") && tokens.length > 1) {
+      english += 2;
+      englishHits += 1;
+    }
+    if (token === "i" || token === "the") english += 1;
+  }
+
+  if (/\b(ya pague|te pague|una foto|tres fotos|cinco fotos|un video|tres videos|cinco videos|mandame|la captura)\b/i.test(folded)) {
+    spanish += 3;
+    spanishHits += 1;
+  }
+  if (/\b(i paid|one photo|three photos|five photos|one video|three videos|five videos|send me|the screenshot)\b/i.test(folded)) {
+    english += 3;
+    englishHits += 1;
+  }
+
+  if (spanishHits === 0 && englishHits === 0) return null;
+  if (spanish > 0 && english > 0 && Math.max(spanish, english) < 2 * Math.min(spanish, english)) {
+    return null;
+  }
+  return spanish > english ? "es" : "en";
+}
+
+export function languageFromHistory(
+  messages: Array<Pick<ChatMessage, "text"> & { role?: ChatMessage["role"] }>,
+): ReplyLanguage | null {
+  const ordered = [...messages].reverse();
+  const userMessages = ordered.filter((message) => message.role !== "assistant");
+  for (const message of userMessages) {
+    const language = detectMessageLanguage(message.text);
+    if (language) return language;
+  }
+  for (const message of ordered) {
+    const language = detectMessageLanguage(message.text);
+    if (language) return language;
+  }
+  return null;
+}
+
+export function resolveReplyLanguage(
+  text: string,
+  history: Array<Pick<ChatMessage, "text"> & { role?: ChatMessage["role"] }> = [],
+): ReplyLanguage {
+  return detectMessageLanguage(text) ?? languageFromHistory(history) ?? "en";
+}
+
+function replyLanguage(ctx: SalesContext, text = ""): ReplyLanguage {
+  if (ctx.language === "es" || ctx.language === "en") return ctx.language;
+  return detectMessageLanguage(text) ?? "en";
+}
+
+export function welcomeText(language: ReplyLanguage = "en"): string {
+  if (language === "es") return "hola. fotos o videos? dime y te paso precios.";
+  return "hey. photos or videos? tell me and I'll send prices.";
+}
+
+function payWith(ctx: SalesContext, language: ReplyLanguage): string {
   const venmo = ctx.venmoHandle ? `Venmo @${ctx.venmoHandle.replace(/^@/, "")}` : "";
   const cash = ctx.cashAppTag ? `Cash App $${ctx.cashAppTag.replace(/^\$/, "")}` : "";
-  return [venmo, cash].filter(Boolean).join(" o ");
+  return [venmo, cash].filter(Boolean).join(language === "es" ? " o " : " or ");
 }
 
-function spokenPack(name: string): string {
-  switch (name) {
-    case "One photo":
-      return "una foto";
-    case "Three photos":
-      return "tres fotos";
-    case "Five photos":
-      return "cinco fotos";
-    case "One video":
-      return "un video";
-    case "Three videos":
-      return "tres videos";
-    case "Five videos":
-      return "cinco videos";
-    default:
-      return name;
+function spokenPack(name: string, language: ReplyLanguage): string {
+  const spanish: Record<string, string> = {
+    "One photo": "una foto",
+    "Three photos": "tres fotos",
+    "Five photos": "cinco fotos",
+    "One video": "un video",
+    "Three videos": "tres videos",
+    "Five videos": "cinco videos",
+  };
+  const english: Record<string, string> = {
+    "One photo": "one photo",
+    "Three photos": "three photos",
+    "Five photos": "five photos",
+    "One video": "one video",
+    "Three videos": "three videos",
+    "Five videos": "five videos",
+  };
+  const table = language === "es" ? spanish : english;
+  return table[name] ?? name;
+}
+
+export function catalogText(ctx: SalesContext, language: ReplyLanguage = replyLanguage(ctx)): string {
+  if (language === "es") {
+    const payment = ctx.paymentsEnabled
+      ? ` se paga por ${payWith(ctx, language)}.`
+      : " todavía no estoy cobrando.";
+    return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} dime cuál quieres.`;
   }
-}
-
-export function catalogText(ctx: SalesContext): string {
   const payment = ctx.paymentsEnabled
-    ? ` se paga por ${payWith(ctx)}.`
-    : " todavía no estoy cobrando.";
-  return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} dime cuál quieres.`;
+    ? ` pay with ${payWith(ctx, language)}.`
+    : " I'm not charging yet.";
+  return `photos: one $15, three $40, five $60. videos: one $25, three $60, five $90.${payment} tell me which you want.`;
 }
 
-export function videosText(ctx: SalesContext): string {
-  const payment = ctx.paymentsEnabled ? ` se paga por ${payWith(ctx)}.` : "";
-  return `videos: uno $25, tres $60, cinco $90.${payment} dime uno, tres o cinco.`;
+export function videosText(ctx: SalesContext, language: ReplyLanguage = replyLanguage(ctx)): string {
+  if (language === "es") {
+    const payment = ctx.paymentsEnabled ? ` se paga por ${payWith(ctx, language)}.` : "";
+    return `videos: uno $25, tres $60, cinco $90.${payment} dime uno, tres o cinco.`;
+  }
+  const payment = ctx.paymentsEnabled ? ` pay with ${payWith(ctx, language)}.` : "";
+  return `videos: one $25, three $60, five $90.${payment} tell me one, three, or five.`;
 }
 
-export function supportText(): string {
-  return "ay cuéntame qué pasó. no me mandes claves ni números de tarjeta.";
+export function supportText(language: ReplyLanguage = "en"): string {
+  if (language === "es") return "ay cuéntame qué pasó. no me mandes claves ni números de tarjeta.";
+  return "tell me what happened. don't send me passwords or card numbers.";
 }
 
-export function optOutText(): string {
-  return "ok ya, no te mando más. si luego quieres ver, dime catalog.";
+export function optOutText(language: ReplyLanguage = "en"): string {
+  if (language === "es") return "ok ya, no te mando más. si luego quieres ver, dime catalog.";
+  return "ok, I won't text you again. if you want to look later, say catalog.";
 }
-
-const IMAGE_PLACEHOLDER =
-  /^[\[(<{]\s*(?:image|img|photo|picture|pic|screenshot|screen[\s-]?shot|attachment|media|file)\s*[\]>)}][.!]?\s*$/i;
-const BARE_IMAGE_PLACEHOLDER = /^(?:image|img)[.!]?\s*$/i;
-const ATTACHMENT_CLAIM =
-  /\b(?:here(?:'|’)?s|here is|this is|attached|attaching|sent|sending|just sent|included)\b[\s\S]{0,60}\b(?:screenshot|screen[\s-]?shot|receipt|proof of payment)\b|\b(?:screenshot|screen[\s-]?shot|receipt)\b[\s\S]{0,40}\b(?:attached|sent|included|above|here)\b|\bproof of payment\b/i;
 
 export function isPaymentImageUrl(raw: string): boolean {
   const cleaned = raw.trim().replace(/[),.;]+$/, "");
@@ -113,48 +343,129 @@ export function textShowsPaymentScreenshot(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || (trimmed.includes("{{") && trimmed.includes("}}"))) return false;
   if (IMAGE_PLACEHOLDER.test(trimmed) || BARE_IMAGE_PLACEHOLDER.test(trimmed)) return true;
-  if (ATTACHMENT_CLAIM.test(trimmed)) return true;
+  if (ATTACHMENT_CLAIM.test(trimmed) || SPANISH_SCREENSHOT.test(fold(trimmed))) return true;
   return (trimmed.match(/https?:\/\/[^\s<>"']+/gi) ?? []).some(isPaymentImageUrl);
 }
 
 export function paymentInstructions(order: Order, ctx: SalesContext): string {
-  return `${spokenPack(order.packName)} $${order.amountUsd}. ${payWith(ctx)}. pon ${order.reference} en la nota y mándame la captura.`;
+  const language = replyLanguage(ctx);
+  const pack = spokenPack(order.packName, language);
+  const how = payWith(ctx, language);
+  if (language === "es") {
+    return `${pack} $${order.amountUsd}. ${how}. pon ${order.reference} en la nota y mándame la captura.`;
+  }
+  return `${pack} $${order.amountUsd}. ${how}. put ${order.reference} in the note and send me the screenshot.`;
 }
 
-export function paidClaimText(_reference: string): string {
-  return "mándame la captura del pago y te mando los archivos.";
+export function paidClaimText(_reference: string, language: ReplyLanguage = "en"): string {
+  if (language === "es") return "mándame la captura del pago y te mando los archivos.";
+  return "send me the payment screenshot and I'll send you the files.";
 }
 
-export function filesReadyText(_reference: string, downloads: string[]): string {
-  return `ya vi la captura. aquí van:\n${downloads.join("\n")}`;
+export function filesReadyText(
+  _reference: string,
+  downloads: string[],
+  language: ReplyLanguage = "en",
+): string {
+  if (language === "es") return `ya vi la captura. aquí van:\n${downloads.join("\n")}`;
+  return `saw the screenshot. here you go:\n${downloads.join("\n")}`;
 }
 
-export function checkoutClosedText(packName: string, amountUsd: number): string {
-  return `${spokenPack(packName)} $${amountUsd}. todavía no estoy cobrando, así que no te puedo mandar nada. te dejo ese precio.`;
+export function filesUnavailableText(language: ReplyLanguage = "en"): string {
+  if (language === "es") return "vi la captura. ahorita no te puedo pasar los archivos, ya le digo a alguien.";
+  return "saw the screenshot. I can't send the files right now, I'll have someone look.";
+}
+
+export function checkoutClosedText(
+  packName: string,
+  amountUsd: number,
+  language: ReplyLanguage = "en",
+): string {
+  const pack = spokenPack(packName, language);
+  if (language === "es") {
+    return `${pack} $${amountUsd}. todavía no estoy cobrando, así que no te puedo mandar nada. te dejo ese precio.`;
+  }
+  return `${pack} $${amountUsd}. I'm not charging yet, so I can't send you anything. I'll leave you that price.`;
+}
+
+function noOpenOrderImageText(language: ReplyLanguage): string {
+  if (language === "es") {
+    return "todavía no tengo nada tuyo. dime qué quieres, una foto o un video, y te digo dónde pagar.";
+  }
+  return "I don't have anything open for you yet. tell me what you want, a photo or a video, and I'll tell you where to pay.";
+}
+
+function paidWithoutOrderText(language: ReplyLanguage): string {
+  if (language === "es") {
+    return "no tengo nada abierto contigo. primero dime una foto, tres fotos o cinco fotos.";
+  }
+  return "I don't have anything open with you. first tell me one photo, three photos, or five photos.";
+}
+
+function paymentsClosedScreenshotText(language: ReplyLanguage): string {
+  if (language === "es") return "todavía no estoy cobrando, así que no te puedo mandar nada por esa captura.";
+  return "I'm not charging yet, so I can't send you anything for that screenshot.";
+}
+
+function paymentsClosedPaidText(language: ReplyLanguage): string {
+  if (language === "es") {
+    return "todavía no estoy cobrando, así que no hay pago. dime catalog si quieres ver las fotos.";
+  }
+  return "I'm not charging yet, so there's no payment. say catalog if you want to see the photos.";
+}
+
+function paymentMismatchText(language: ReplyLanguage): string {
+  if (language === "es") return "ese pago no me cuadra todavía.";
+  return "that payment doesn't line up yet.";
 }
 
 function packFromText(text: string): PackId | null {
-  const value = text.toLowerCase().replace(/\s+/g, " ").trim();
-  if (value === "five videos" || /\b(five videos|5 videos|five video)\b/.test(value)) return "video_5";
-  if (value === "three videos" || /\b(three videos|3 videos|three video)\b/.test(value)) {
+  const value = fold(text).replace(/\s+/g, " ").trim();
+  if (
+    value === "five videos" ||
+    value === "cinco videos" ||
+    /\b(five videos|5 videos|five video|cinco videos|cinco video)\b/.test(value)
+  ) {
+    return "video_5";
+  }
+  if (
+    value === "three videos" ||
+    value === "tres videos" ||
+    /\b(three videos|3 videos|three video|tres videos|tres video)\b/.test(value)
+  ) {
     return "video_3";
   }
-  if (value === "one video" || /\b(one video|1 video|single video)\b/.test(value)) return "video_1";
+  if (
+    value === "one video" ||
+    value === "un video" ||
+    value === "uno video" ||
+    /\b(one video|1 video|single video|un video|uno video)\b/.test(value)
+  ) {
+    return "video_1";
+  }
   if (
     value === "5" ||
     value === "five" ||
-    /\b(five photos|5 photos|five photo|photo pack of five)\b/.test(value)
+    value === "cinco" ||
+    /\b(five photos|5 photos|five photo|photo pack of five|cinco fotos|5 fotos|cinco foto)\b/.test(value)
   ) {
     return "photo_5";
   }
   if (
     value === "3" ||
     value === "three" ||
-    /\b(three photos|3 photos|three photo|photo pack of three)\b/.test(value)
+    value === "tres" ||
+    /\b(three photos|3 photos|three photo|photo pack of three|tres fotos|3 fotos|tres foto)\b/.test(value)
   ) {
     return "photo_3";
   }
-  if (value === "1" || value === "one" || /\b(one photo|1 photo|single photo)\b/.test(value)) {
+  if (
+    value === "1" ||
+    value === "one" ||
+    value === "una" ||
+    value === "uno" ||
+    /\b(one photo|1 photo|single photo|una foto|1 foto|un foto|uno foto)\b/.test(value)
+  ) {
     return "photo_1";
   }
   return null;
@@ -166,28 +477,29 @@ export function decideDeterministic(
   input: { paymentScreenshot?: boolean } = {},
 ): Decision | null {
   const trimmed = text.trim();
+  const folded = fold(trimmed);
+  const language = replyLanguage(ctx, trimmed);
   const paymentScreenshot =
     input.paymentScreenshot === true || textShowsPaymentScreenshot(trimmed);
 
-  if (OPT_OUT.test(trimmed)) {
-    return decision({ reply: optOutText(), intent: "opt_out" });
+  if (OPT_OUT.test(folded)) {
+    return decision({ reply: optOutText(language), intent: "opt_out" });
   }
 
-  if (SUPPORT.test(trimmed)) {
-    return decision({ reply: supportText(), intent: "support", needsHuman: true });
+  if (SUPPORT.test(folded)) {
+    return decision({ reply: supportText(language), intent: "support", needsHuman: true });
   }
 
   if (paymentScreenshot) {
     if (!ctx.paymentsEnabled) {
       return decision({
-        reply: "todavía no estoy cobrando, así que no te puedo mandar nada por esa captura.",
+        reply: paymentsClosedScreenshotText(language),
         intent: "payment_claim",
       });
     }
     if (!ctx.openOrder) {
       return decision({
-        reply:
-          "todavía no tengo nada tuyo. dime qué quieres, una foto o un video, y te digo dónde pagar.",
+        reply: noOpenOrderImageText(language),
         intent: "payment_claim",
       });
     }
@@ -201,45 +513,43 @@ export function decideDeterministic(
 
   if (!trimmed) {
     return decision({
-      reply: welcomeText(ctx.shopHandle),
+      reply: welcomeText(language),
       intent: "browse",
     });
   }
 
-  if (PAID.test(trimmed)) {
+  if (PAID.test(folded)) {
     if (!ctx.paymentsEnabled) {
       return decision({
-        reply:
-          "todavía no estoy cobrando, así que no hay pago. dime catalog si quieres ver las fotos.",
+        reply: paymentsClosedPaidText(language),
         intent: "payment_claim",
         needsHuman: true,
       });
     }
     if (!ctx.openOrder) {
       return decision({
-        reply:
-          "no tengo nada abierto contigo. primero dime una foto, tres fotos o cinco fotos.",
+        reply: paidWithoutOrderText(language),
         intent: "payment_claim",
       });
     }
     return decision({
-      reply: paidClaimText(ctx.openOrder.reference),
+      reply: paidClaimText(ctx.openOrder.reference, language),
       intent: "payment_claim",
       packId: ctx.openOrder.packId,
       orderAction: "claim_payment",
     });
   }
 
-  if (ctx.optedOut && !CATALOG.test(trimmed) && !PHOTOS.test(trimmed)) {
-    return decision({ reply: optOutText(), intent: "opt_out" });
+  if (ctx.optedOut && !CATALOG.test(folded) && !PHOTOS.test(folded)) {
+    return decision({ reply: optOutText(language), intent: "opt_out" });
   }
 
-  if (CATALOG.test(trimmed) || PHOTOS.test(trimmed)) {
-    return decision({ reply: catalogText(ctx), intent: "browse" });
+  if (CATALOG.test(folded) || PHOTOS.test(folded)) {
+    return decision({ reply: catalogText(ctx, language), intent: "browse" });
   }
 
-  if (VIDEOS.test(trimmed)) {
-    return decision({ reply: videosText(ctx), intent: "videos" });
+  if (VIDEOS.test(folded)) {
+    return decision({ reply: videosText(ctx, language), intent: "videos" });
   }
 
   const packId = packFromText(trimmed);
@@ -247,7 +557,7 @@ export function decideDeterministic(
     const pack = packById(packId)!;
     if (!ctx.paymentsEnabled) {
       return decision({
-        reply: checkoutClosedText(pack.name, pack.priceUsd),
+        reply: checkoutClosedText(pack.name, pack.priceUsd, language),
         intent: "purchase",
         packId,
         orderAction: "quote",
@@ -282,11 +592,17 @@ const INTENTS = new Set([
 ]);
 
 export function systemPrompt(ctx: SalesContext): string {
+  const language = replyLanguage(ctx);
+  const languageLine =
+    language === "es"
+      ? "This turn is Spanish. Reply in casual Spanish only."
+      : "This turn is English. Reply in casual English only. Do not answer in Spanish.";
   return [
     `You write the Instagram DMs for @${ctx.shopHandle} in the account's own texting voice.`,
-    "Voice: casual Spanish, like her captions. Short. First person. A little jaja or one emoji is fine. Write like a text, not like support, a receipt, or a policy.",
+    "Voice: casual, like her captions. Short. First person. A little jaja or one emoji is fine in Spanish, and a little haha or one emoji is fine in English. Write like a text, not like support, a receipt, or a policy.",
     "Do not invent a biography, a real name, a city, friends, or a personal story. Do not say you are a bot, an assistant, automated, or a team.",
-    "Spanish is the default. If the customer writes in English, you may answer in English, but keep the same short first-person texting voice. Never use corporate English.",
+    languageLine,
+    "Spanish is not the default. Never answer an English sentence in Spanish. Use Spanish only when the customer wrote in Spanish.",
     "Sell only photo or video files from this collection. Do not invent prices, discounts, exclusivity, or whether a file was already sent.",
     catalogSummary(),
     `The only places to pay are Venmo @${ctx.venmoHandle.replace(/^@/, "")} and Cash App $${ctx.cashAppTag.replace(/^\$/, "")}.`,
@@ -297,10 +613,10 @@ export function systemPrompt(ctx: SalesContext): string {
     `Payments enabled: ${ctx.paymentsEnabled ? "yes" : "no"}.`,
     ctx.paymentsEnabled
       ? "If they choose a pack, set intent to purchase and packId. The server sends where to pay, including the note code."
-      : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice.",
+      : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice, in the customer's language.",
     "If the catalog does not answer, set needsHuman true and say you'll have someone look, in her voice.",
     "If they want messages to stop, set intent to opt_out.",
-    'Match this length: "hola. fotos o videos?", "mándame la captura del pago y te mando los archivos.", "ya vi la captura. aquí van:".',
+    'Match this length. Spanish: "hola. fotos o videos?", "mándame la captura del pago y te mando los archivos.", "ya vi la captura. aquí van:". English: "hey. photos or videos?", "send me the payment screenshot and I\'ll send you the files.", "saw the screenshot. here you go:".',
     'Return only JSON: {"reply": string, "intent": "browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other", "packId": "photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null, "needsHuman": boolean}',
   ].join("\n");
 }
@@ -324,16 +640,17 @@ export function decisionFromModel(raw: string, ctx: SalesContext): Decision {
   const pack = typeof parsed.packId === "string" ? packById(parsed.packId) : undefined;
   const reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
   const needsHuman = parsed.needsHuman === true || intent === "support";
+  const language = replyLanguage(ctx);
 
   if (intent === "opt_out") {
-    return decision({ reply: optOutText(), intent: "opt_out" });
+    return decision({ reply: optOutText(language), intent: "opt_out" });
   }
 
   if (intent === "payment_claim") {
     return (
       decideDeterministic("I paid", ctx) ??
       decision({
-        reply: "ese pago no me cuadra todavía.",
+        reply: paymentMismatchText(language),
         intent: "payment_claim",
         needsHuman: true,
       })
@@ -341,13 +658,13 @@ export function decisionFromModel(raw: string, ctx: SalesContext): Decision {
   }
 
   if (intent === "videos") {
-    return decision({ reply: videosText(ctx), intent: "videos" });
+    return decision({ reply: videosText(ctx, language), intent: "videos" });
   }
 
   if (pack && (intent === "purchase" || intent === "browse")) {
     if (!ctx.paymentsEnabled) {
       return decision({
-        reply: checkoutClosedText(pack.name, pack.priceUsd),
+        reply: checkoutClosedText(pack.name, pack.priceUsd, language),
         intent: "purchase",
         packId: pack.id,
         orderAction: "quote",
@@ -361,7 +678,7 @@ export function decisionFromModel(raw: string, ctx: SalesContext): Decision {
     });
   }
 
-  let safeReply = reply || supportText();
+  let safeReply = reply || supportText(language);
   if (!ctx.paymentsEnabled) {
     safeReply = safeReply
       .replace(/venmo[^\n.]*/gi, "")
@@ -369,7 +686,7 @@ export function decisionFromModel(raw: string, ctx: SalesContext): Decision {
       .replace(/\s{2,}/g, " ")
       .trim();
   }
-  if (!safeReply) safeReply = supportText();
+  if (!safeReply) safeReply = supportText(language);
 
   return decision({
     reply: safeReply,

@@ -6,7 +6,7 @@ import { handleIncoming } from "./handleIncoming.js";
 import { resolveMediaFile } from "./library.js";
 import { dynamicBlock, parseIncoming } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
-import { filesReadyText, supportText } from "./sales.js";
+import { filesReadyText, resolveReplyLanguage, supportText } from "./sales.js";
 import type { Store } from "./store.js";
 
 const missing = missingProductionSecrets();
@@ -69,7 +69,7 @@ app.post("/manychat/dynamic", async (req, res) => {
     console.error(error);
     res.json(
       dynamicBlock({
-        reply: supportText(),
+        reply: supportText(resolveReplyLanguage(incoming.text)),
         intent: "support",
         needsHuman: true,
         useModel: false,

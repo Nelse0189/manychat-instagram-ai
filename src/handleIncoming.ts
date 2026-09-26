@@ -2,7 +2,6 @@ import { packById } from "./catalog.js";
 import { config } from "./config.js";
 import { releaseOrderFiles } from "./fulfill.js";
 import { orderReference } from "./memoryStore.js";
-import { paymentInstructions } from "./sales.js";
 import type { Store } from "./store.js";
 import { emptySubscriber } from "./store.js";
 import type { Decision, IncomingMessage } from "./types.js";
@@ -10,7 +9,11 @@ import {
   decideDeterministic,
   decisionFromModel,
   filesReadyText,
+  filesUnavailableText,
+  paymentInstructions,
+  resolveReplyLanguage,
   textShowsPaymentScreenshot,
+  type ReplyLanguage,
   type SalesContext,
 } from "./sales.js";
 import { completeReply } from "./openrouter.js";
@@ -18,6 +21,7 @@ import { completeReply } from "./openrouter.js";
 function salesContext(
   openOrder: Awaited<ReturnType<Store["latestOpenOrder"]>>,
   optedOut: boolean,
+  language: ReplyLanguage,
 ): SalesContext {
   return {
     shopHandle: config.shopHandle,
@@ -26,6 +30,7 @@ function salesContext(
     cashAppTag: config.cashAppTag,
     optedOut,
     openOrder,
+    language,
   };
 }
 
@@ -36,13 +41,14 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
   subscriber.igUsername = incoming.igUsername ?? subscriber.igUsername;
 
   const openOrder = await store.latestOpenOrder(incoming.subscriberId);
-  const ctx = salesContext(openOrder, subscriber.optedOut);
+  const history = await store.recentMessages(incoming.subscriberId, 12);
+  const language = resolveReplyLanguage(incoming.text, history);
+  const ctx = salesContext(openOrder, subscriber.optedOut, language);
   const paymentScreenshot =
     incoming.paymentScreenshot === true || textShowsPaymentScreenshot(incoming.text);
   let decision = decideDeterministic(incoming.text, ctx, { paymentScreenshot });
 
   if (!decision) {
-    const history = await store.recentMessages(incoming.subscriberId, 12);
     const raw = await completeReply(ctx, history, incoming.text);
     decision = decisionFromModel(raw, ctx);
   }
@@ -72,13 +78,13 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
     if ("downloads" in released && released.downloads.length > 0) {
       decision = {
         ...decision,
-        reply: filesReadyText(released.order.reference, released.downloads),
+        reply: filesReadyText(released.order.reference, released.downloads, language),
         needsHuman: false,
       };
     } else {
       decision = {
         ...decision,
-        reply: "vi la captura. ahorita no te puedo pasar los archivos, ya le digo a alguien.",
+        reply: filesUnavailableText(language),
         needsHuman: true,
         orderAction: null,
       };
