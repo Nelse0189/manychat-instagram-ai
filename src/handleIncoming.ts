@@ -78,7 +78,7 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
     } else {
       decision = {
         ...decision,
-        reply: "Got the screenshot. I can't send the files just yet, so I'll have someone follow up.",
+        reply: "vi la captura. ahorita no te puedo pasar los archivos, ya le digo a alguien.",
         needsHuman: true,
         orderAction: null,
       };

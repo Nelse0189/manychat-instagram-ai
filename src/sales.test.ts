@@ -17,9 +17,10 @@ const ctx: SalesContext = {
 test("catalog reply uses the draft prices and does not mention payment handles", () => {
   const decision = decideDeterministic("CATALOG", ctx);
   assert.ok(decision);
-  assert.match(decision.reply, /\$15 USD/);
-  assert.match(decision.reply, /\$40 USD/);
-  assert.match(decision.reply, /\$60 USD/);
+  assert.match(decision.reply, /\$15/);
+  assert.match(decision.reply, /\$40/);
+  assert.match(decision.reply, /\$60/);
+  assert.doesNotMatch(decision.reply, /automated|collection|Reply ONE/i);
   assert.doesNotMatch(decision.reply, /venmo|cash app/i);
 });
 
@@ -32,7 +33,7 @@ test("a pack quote stays closed while payments are disabled", () => {
   const decision = decideDeterministic("three photos", ctx);
   assert.equal(decision?.packId, "photo_3");
   assert.equal(decision?.orderAction, "quote");
-  assert.match(decision!.reply, /Checkout is not open yet/);
+  assert.match(decision!.reply, /todavía no estoy cobrando/);
   assert.doesNotMatch(decision!.reply, /bluejays0137|Arialarias/);
 });
 
@@ -45,7 +46,7 @@ test("payment claim without an order does not invent a reference", () => {
     ...ctx,
     paymentsEnabled: true,
   });
-  assert.match(decision!.reply, /don't have an open order/i);
+  assert.match(decision!.reply, /no tengo nada abierto/i);
   assert.equal(decision?.orderAction, null);
 });
 
@@ -67,10 +68,10 @@ test("handleIncoming tells the client where to send the money", async () => {
     firstName: "Sam",
     igUsername: "sam",
   });
-  assert.match(decision.reply, /15 USD/);
+  assert.match(decision.reply, /\$15/);
   assert.match(decision.reply, /Venmo @bluejays0137/);
   assert.match(decision.reply, /Cash App \$Arialluxe/);
-  assert.match(decision.reply, /send me a screenshot/i);
+  assert.match(decision.reply, /mándame la captura/i);
   assert.doesNotMatch(decision.reply, /not treated as payment|screenshot is not/i);
   const orders = await store.listOrders("quoted");
   assert.equal(orders.length, 1);
@@ -93,7 +94,7 @@ test("saying they paid asks for a screenshot and does not release files", async 
     firstName: "Sam",
     igUsername: "sam",
   });
-  assert.match(decision.reply, /send me a screenshot/i);
+  assert.match(decision.reply, /mándame la captura/i);
   assert.doesNotMatch(decision.reply, /\/downloads\/|flagged|not treated as payment/i);
   assert.equal((await store.listOrders("verified")).length, 0);
   assert.equal((await store.listOrders("pending_verification")).length, 1);
@@ -110,8 +111,9 @@ test("a screenshot placeholder fulfills an open order with download links", asyn
   const incoming = parseIncoming({ id: "123", last_input_text: "[image]" });
   assert.equal(incoming?.paymentScreenshot, true);
   const decision = await handleIncoming(store, incoming!);
-  assert.match(decision.reply, /Got the screenshot/);
+  assert.match(decision.reply, /ya vi la captura/);
   assert.match(decision.reply, /\/downloads\//);
+  assert.doesNotMatch(decision.reply, /Here are your files|order reference|AL-/i);
   const orders = await store.listOrders("verified");
   assert.equal(orders.length, 1);
   assert.ok(orders[0]?.downloadToken);
@@ -168,7 +170,7 @@ test("an image with no open order does not release files", async () => {
     last_input_text: "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=5",
   });
   const decision = await handleIncoming(store, incoming!);
-  assert.match(decision.reply, /don't have an order open/i);
+  assert.match(decision.reply, /no tengo nada tuyo/i);
   assert.doesNotMatch(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders()).length, 0);
 });
@@ -187,7 +189,7 @@ test("saying the screenshot is attached fulfills the open order", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.match(decision.reply, /Got the screenshot/);
+  assert.match(decision.reply, /ya vi la captura/);
   assert.match(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders("verified")).length, 1);
 });
@@ -195,6 +197,8 @@ test("saying the screenshot is attached fulfills the open order", async () => {
 test("model instructions ask for a screenshot", () => {
   const prompt = systemPrompt({ ...ctx, paymentsEnabled: true, cashAppTag: "Arialluxe" });
   assert.match(prompt, /ask for a screenshot/i);
+  assert.match(prompt, /casual Spanish/);
   assert.match(prompt, /Cash App \$Arialluxe/);
+  assert.doesNotMatch(prompt, /automated shop assistant|You are not the person/i);
   assert.doesNotMatch(prompt, /screenshot as verified payment|not treated as payment|screenshot is not/i);
 });
