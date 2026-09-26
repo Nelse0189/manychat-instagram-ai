@@ -31,34 +31,53 @@ function decision(
   };
 }
 
-export function welcomeText(shopHandle: string): string {
-  return `Hi! I'm the automated shop assistant for @${shopHandle}. Want to browse the photo and video collections? Reply PHOTOS, VIDEOS, or SUPPORT.`;
+export function welcomeText(_shopHandle: string): string {
+  return "hola. fotos o videos? dime y te paso precios.";
 }
 
 function payWith(ctx: SalesContext): string {
   const venmo = ctx.venmoHandle ? `Venmo @${ctx.venmoHandle.replace(/^@/, "")}` : "";
   const cash = ctx.cashAppTag ? `Cash App $${ctx.cashAppTag.replace(/^\$/, "")}` : "";
-  return [venmo, cash].filter(Boolean).join(" or ");
+  return [venmo, cash].filter(Boolean).join(" o ");
+}
+
+function spokenPack(name: string): string {
+  switch (name) {
+    case "One photo":
+      return "una foto";
+    case "Three photos":
+      return "tres fotos";
+    case "Five photos":
+      return "cinco fotos";
+    case "One video":
+      return "un video";
+    case "Three videos":
+      return "tres videos";
+    case "Five videos":
+      return "cinco videos";
+    default:
+      return name;
+  }
 }
 
 export function catalogText(ctx: SalesContext): string {
   const payment = ctx.paymentsEnabled
-    ? ` Payment goes to ${payWith(ctx)}.`
-    : " Checkout is not open yet.";
-  return `Photos and videos from this collection are for sale. Photos: one for $15 USD, three for $40 USD, or five for $60 USD. Videos: one for $25 USD, three for $60 USD, or five for $90 USD.${payment} Reply ONE PHOTO, THREE PHOTOS, FIVE PHOTOS, ONE VIDEO, THREE VIDEOS, or FIVE VIDEOS.`;
+    ? ` se paga por ${payWith(ctx)}.`
+    : " todavía no estoy cobrando.";
+  return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} dime cuál quieres.`;
 }
 
 export function videosText(ctx: SalesContext): string {
-  const payment = ctx.paymentsEnabled ? ` Pay ${payWith(ctx)}.` : "";
-  return `Videos from this collection are one for $25 USD, three for $60 USD, or five for $90 USD.${payment} Reply ONE VIDEO, THREE VIDEOS, or FIVE VIDEOS.`;
+  const payment = ctx.paymentsEnabled ? ` se paga por ${payWith(ctx)}.` : "";
+  return `videos: uno $25, tres $60, cinco $90.${payment} dime uno, tres o cinco.`;
 }
 
 export function supportText(): string {
-  return "I'll flag this for a team member. Please describe the issue here; don't send passwords or payment-card information.";
+  return "ay cuéntame qué pasó. no me mandes claves ni números de tarjeta.";
 }
 
 export function optOutText(): string {
-  return "You're opted out of promotional messages. Message CATALOG if you want to browse, or SUPPORT if you need help with an order.";
+  return "ok ya, no te mando más. si luego quieres ver, dime catalog.";
 }
 
 const IMAGE_PLACEHOLDER =
@@ -99,19 +118,19 @@ export function textShowsPaymentScreenshot(text: string): boolean {
 }
 
 export function paymentInstructions(order: Order, ctx: SalesContext): string {
-  return `${order.packName} is ${order.amountUsd} USD. ${payWith(ctx)}. Put ${order.reference} in the note, then send me a screenshot.`;
+  return `${spokenPack(order.packName)} $${order.amountUsd}. ${payWith(ctx)}. pon ${order.reference} en la nota y mándame la captura.`;
 }
 
 export function paidClaimText(_reference: string): string {
-  return "Send me a screenshot of the payment and I'll send the files.";
+  return "mándame la captura del pago y te mando los archivos.";
 }
 
-export function filesReadyText(reference: string, downloads: string[]): string {
-  return `Got the screenshot. Here are your files for ${reference}:\n${downloads.join("\n")}`;
+export function filesReadyText(_reference: string, downloads: string[]): string {
+  return `ya vi la captura. aquí van:\n${downloads.join("\n")}`;
 }
 
 export function checkoutClosedText(packName: string, amountUsd: number): string {
-  return `The ${packName} collection is ${amountUsd} USD and contains previously published files. Checkout is not open yet, so I can't take payment or send a download. I'll keep this price on your quote.`;
+  return `${spokenPack(packName)} $${amountUsd}. todavía no estoy cobrando, así que no te puedo mandar nada. te dejo ese precio.`;
 }
 
 function packFromText(text: string): PackId | null {
@@ -161,14 +180,14 @@ export function decideDeterministic(
   if (paymentScreenshot) {
     if (!ctx.paymentsEnabled) {
       return decision({
-        reply: "Checkout isn't open yet, so I can't send files for that screenshot.",
+        reply: "todavía no estoy cobrando, así que no te puedo mandar nada por esa captura.",
         intent: "payment_claim",
       });
     }
     if (!ctx.openOrder) {
       return decision({
         reply:
-          "I don't have an order open yet. Tell me the pack you want, like ONE PHOTO or ONE VIDEO, and I'll tell you where to pay.",
+          "todavía no tengo nada tuyo. dime qué quieres, una foto o un video, y te digo dónde pagar.",
         intent: "payment_claim",
       });
     }
@@ -191,7 +210,7 @@ export function decideDeterministic(
     if (!ctx.paymentsEnabled) {
       return decision({
         reply:
-          "Checkout is not open yet, so there is no payment for me to match. Message CATALOG to review the photo collections.",
+          "todavía no estoy cobrando, así que no hay pago. dime catalog si quieres ver las fotos.",
         intent: "payment_claim",
         needsHuman: true,
       });
@@ -199,7 +218,7 @@ export function decideDeterministic(
     if (!ctx.openOrder) {
       return decision({
         reply:
-          "I don't have an open order to match that payment to. Reply ONE PHOTO, THREE PHOTOS, or FIVE PHOTOS first, then pay with the reference I give you.",
+          "no tengo nada abierto contigo. primero dime una foto, tres fotos o cinco fotos.",
         intent: "payment_claim",
       });
     }
@@ -264,20 +283,24 @@ const INTENTS = new Set([
 
 export function systemPrompt(ctx: SalesContext): string {
   return [
-    `You are the automated shop assistant for Instagram @${ctx.shopHandle}.`,
-    "You are not the person shown in the photos or videos. Never claim to be them or invent a personal relationship.",
-    "Customers pay for photo or video files from this collection. Do not invent prices, discounts, exclusivity, or delivery status.",
+    `You write the Instagram DMs for @${ctx.shopHandle} in the account's own texting voice.`,
+    "Voice: casual Spanish, like her captions. Short. First person. A little jaja or one emoji is fine. Write like a text, not like support, a receipt, or a policy.",
+    "Do not invent a biography, a real name, a city, friends, or a personal story. Do not say you are a bot, an assistant, automated, or a team.",
+    "Spanish is the default. If the customer writes in English, you may answer in English, but keep the same short first-person texting voice. Never use corporate English.",
+    "Sell only photo or video files from this collection. Do not invent prices, discounts, exclusivity, or whether a file was already sent.",
     catalogSummary(),
-    `The only payment destinations are Venmo @${ctx.venmoHandle.replace(/^@/, "")} and Cash App $${ctx.cashAppTag.replace(/^\$/, "")}.`,
+    `The only places to pay are Venmo @${ctx.venmoHandle.replace(/^@/, "")} and Cash App $${ctx.cashAppTag.replace(/^\$/, "")}.`,
     "Never ask for card numbers or passwords.",
-    "After they pay, ask for a screenshot of the payment. If they only say they paid, ask for that screenshot.",
-    "When a screenshot arrives for an open order, the server sends the download links in the reply.",
+    "If they only say they paid, ask for a screenshot of the payment and do not send files.",
+    "A screenshot with no open order does not release files. Ask which pack they want.",
+    "When a screenshot arrives for an open order, the server sends the download links in the reply. Do not invent links or an order code.",
     `Payments enabled: ${ctx.paymentsEnabled ? "yes" : "no"}.`,
     ctx.paymentsEnabled
-      ? "If they choose a pack, set intent to purchase and packId. The server sends the payment instructions."
-      : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles.",
-    "If the catalog does not answer the question, set needsHuman true and say a team member will follow up.",
-    "If they want promotions to stop, set intent to opt_out.",
+      ? "If they choose a pack, set intent to purchase and packId. The server sends where to pay, including the note code."
+      : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice.",
+    "If the catalog does not answer, set needsHuman true and say you'll have someone look, in her voice.",
+    "If they want messages to stop, set intent to opt_out.",
+    'Match this length: "hola. fotos o videos?", "mándame la captura del pago y te mando los archivos.", "ya vi la captura. aquí van:".',
     'Return only JSON: {"reply": string, "intent": "browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other", "packId": "photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null, "needsHuman": boolean}',
   ].join("\n");
 }
@@ -310,7 +333,7 @@ export function decisionFromModel(raw: string, ctx: SalesContext): Decision {
     return (
       decideDeterministic("I paid", ctx) ??
       decision({
-        reply: "I can't match that payment yet.",
+        reply: "ese pago no me cuadra todavía.",
         intent: "payment_claim",
         needsHuman: true,
       })
