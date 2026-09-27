@@ -60,7 +60,7 @@ test("payment claim without an order does not invent a reference", () => {
     ...ctx,
     paymentsEnabled: true,
   });
-  assert.match(decision!.reply, /don't have anything open/i);
+  assert.match(decision!.reply, /nothing's open with you yet/i);
   assert.doesNotMatch(decision!.reply, /no tengo nada abierto|mándame/);
   assert.equal(decision?.orderAction, null);
 });
@@ -83,7 +83,7 @@ test("handleIncoming tells the client where to send the money", async () => {
     firstName: "Sam",
     igUsername: "sam",
   });
-  assert.match(decision.reply, /one photo \$15/);
+  assert.match(decision.reply, /one photo is \$15/);
   assert.match(decision.reply, /Venmo @bluejays0137/);
   assert.match(decision.reply, /Cash App \$Arialluxe/);
   assert.match(decision.reply, /put AL-[0-9A-F]+ in the note and send me the screenshot/);
@@ -109,7 +109,7 @@ test("saying they paid asks for a screenshot and does not release files", async 
     firstName: "Sam",
     igUsername: "sam",
   });
-  assert.match(decision.reply, /send me the payment screenshot and I'll send you the files/);
+  assert.match(decision.reply, /send me the screenshot and I'll send you the files/);
   assert.doesNotMatch(decision.reply, /mándame/);
   assert.doesNotMatch(decision.reply, /\/downloads\/|flagged|not treated as payment/i);
   assert.equal((await store.listOrders("verified")).length, 0);
@@ -127,9 +127,9 @@ test("a screenshot placeholder fulfills an open order with download links", asyn
   const incoming = parseIncoming({ id: "123", last_input_text: "[image]" });
   assert.equal(incoming?.paymentScreenshot, true);
   const decision = await handleIncoming(store, incoming!);
-  assert.match(decision.reply, /saw the screenshot\. here you go:/);
+  assert.match(decision.reply, /I checked the screenshot, payment's good\. here:/);
   assert.match(decision.reply, /\/downloads\//);
-  assert.doesNotMatch(decision.reply, /Here are your files|order reference|AL-|ya vi la captura/i);
+  assert.doesNotMatch(decision.reply, /Here are your files|order reference|AL-|ya vi la captura|still has to match|Venmo/i);
   const orders = await store.listOrders("verified");
   assert.equal(orders.length, 1);
   assert.ok(orders[0]?.downloadToken);
@@ -186,7 +186,7 @@ test("an image with no open order does not release files", async () => {
     last_input_text: "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=5",
   });
   const decision = await handleIncoming(store, incoming!);
-  assert.match(decision.reply, /don't have anything open for you yet/i);
+  assert.match(decision.reply, /don't have an order open/i);
   assert.doesNotMatch(decision.reply, /no tengo nada tuyo|mándame/);
   assert.doesNotMatch(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders()).length, 0);
@@ -206,8 +206,8 @@ test("saying the screenshot is attached fulfills the open order", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.match(decision.reply, /saw the screenshot\. here you go:/);
-  assert.doesNotMatch(decision.reply, /ya vi la captura/);
+  assert.match(decision.reply, /I checked the screenshot, payment's good\. here:/);
+  assert.doesNotMatch(decision.reply, /ya vi la captura|still has to match/);
   assert.match(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders("verified")).length, 1);
 });
@@ -215,6 +215,12 @@ test("saying the screenshot is attached fulfills the open order", async () => {
 test("model instructions ask for a screenshot and do not default to Spanish", () => {
   const prompt = systemPrompt({ ...ctx, paymentsEnabled: true, cashAppTag: "Arialluxe" });
   assert.match(prompt, /ask for a screenshot/i);
+  assert.match(prompt, /18-year-old girl/);
+  assert.match(prompt, /I'm 18/);
+  assert.match(prompt, /I'm in the US/);
+  assert.match(prompt, /screenshot on an open order is the payment verification/i);
+  assert.match(prompt, /Do not say a person still has to match Venmo/);
+  assert.match(prompt, /Do not invent a real name or a life story/);
   assert.match(prompt, /casual/);
   assert.match(prompt, /This turn is English/);
   assert.match(prompt, /Spanish is not the default/);
@@ -223,7 +229,9 @@ test("model instructions ask for a screenshot and do not default to Spanish", ()
   assert.match(prompt, /Venmo @bluejays0137/);
   assert.doesNotMatch(prompt, /Spanish is the default/);
   assert.doesNotMatch(prompt, /automated shop assistant|You are not the person/i);
+  assert.doesNotMatch(prompt, /personal facts|Do not invent a biography|personal story/i);
   assert.doesNotMatch(prompt, /screenshot as verified payment|not treated as payment|screenshot is not/i);
+  assert.doesNotMatch(prompt, /Files are delivered only after a person|human still has to match/i);
 });
 
 const quotedOrder: Order = {
@@ -250,11 +258,11 @@ const payCtx: SalesContext = {
 test("Spanish and English quotes keep the same casual payment line", () => {
   assert.equal(
     paymentInstructions(quotedOrder, { ...payCtx, language: "es" }),
-    "una foto $15. Venmo @bluejays0137 o Cash App $Arialluxe. pon AL-1A2B3C en la nota y mándame la captura.",
+    "una foto $15. Venmo @bluejays0137 o Cash App $Arialluxe. pon AL-1A2B3C en la nota y mándame la captura, porfa.",
   );
   assert.equal(
     paymentInstructions(quotedOrder, { ...payCtx, language: "en" }),
-    "one photo $15. Venmo @bluejays0137 or Cash App $Arialluxe. put AL-1A2B3C in the note and send me the screenshot.",
+    "one photo is $15. Venmo @bluejays0137 or Cash App $Arialluxe. put AL-1A2B3C in the note and send me the screenshot.",
   );
 });
 
@@ -266,7 +274,7 @@ test("an English sentence is quoted in English", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.match(decision.reply, /one photo \$15/);
+  assert.match(decision.reply, /one photo is \$15/);
   assert.match(decision.reply, /Venmo @bluejays0137 or Cash App \$Arialluxe/);
   assert.match(decision.reply, /send me the screenshot/);
   assert.doesNotMatch(decision.reply, /mándame|pon |una foto|aquí/);
@@ -282,7 +290,7 @@ test("a Spanish pack request is quoted in Spanish", async () => {
   });
   assert.match(
     decision.reply,
-    /una foto \$15\. Venmo @bluejays0137 o Cash App \$Arialluxe\. pon AL-[0-9A-F]+ en la nota y mándame la captura\./,
+    /una foto \$15\. Venmo @bluejays0137 o Cash App \$Arialluxe\. pon AL-[0-9A-F]+ en la nota y mándame la captura, porfa\./,
   );
   assert.doesNotMatch(decision.reply, /send me the screenshot|put /);
 });
@@ -301,7 +309,7 @@ test("ya pagué asks for the screenshot in Spanish and does not release files", 
     firstName: null,
     igUsername: null,
   });
-  assert.equal(decision.reply, "mándame la captura del pago y te mando los archivos.");
+  assert.equal(decision.reply, "mándame la captura y te mando los archivos.");
   assert.doesNotMatch(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders("verified")).length, 0);
   assert.equal((await store.listOrders("pending_verification")).length, 1);
@@ -322,9 +330,9 @@ test("a screenshot after a Spanish order sends the links in Spanish", async () =
     igUsername: null,
     paymentScreenshot: true,
   });
-  assert.match(decision.reply, /^ya vi la captura\. aquí van:\n/);
+  assert.match(decision.reply, /^ya vi la captura, el pago está bien\. aquí:\n/);
   assert.match(decision.reply, /\/downloads\//);
-  assert.doesNotMatch(decision.reply, /saw the screenshot|here you go/);
+  assert.doesNotMatch(decision.reply, /I checked the screenshot|payment's good/);
   assert.equal((await store.listOrders("verified")).length, 1);
 });
 
@@ -342,7 +350,7 @@ test("a Spanish screenshot claim fulfills and an English follow-up does not stay
     firstName: null,
     igUsername: null,
   });
-  assert.match(spanishShot.reply, /ya vi la captura\. aquí van:/);
+  assert.match(spanishShot.reply, /ya vi la captura, el pago está bien\. aquí:/);
   assert.match(spanishShot.reply, /\/downloads\//);
 
   const storeEn = createMemoryStore();
@@ -358,7 +366,7 @@ test("a Spanish screenshot claim fulfills and an English follow-up does not stay
     firstName: null,
     igUsername: null,
   });
-  assert.match(englishPaid.reply, /send me the payment screenshot/);
+  assert.match(englishPaid.reply, /send me the screenshot/);
   assert.doesNotMatch(englishPaid.reply, /mándame/);
   assert.equal((await storeEn.listOrders("verified")).length, 0);
 });
@@ -406,22 +414,67 @@ test("model scripted lines use the conversation language", () => {
     '{"reply":"ok","intent":"opt_out","packId":null,"needsHuman":false}',
     { ...payCtx, language: "es" },
   );
-  assert.match(spanish.reply, /no te mando más/);
+  assert.match(spanish.reply, /ya no te escribo/);
 
   const english = decisionFromModel(
     '{"reply":"ya pagué","intent":"payment_claim","packId":null,"needsHuman":false}',
     { ...payCtx, language: "en", openOrder: quotedOrder },
   );
-  assert.equal(english.reply, "send me the payment screenshot and I'll send you the files.");
+  assert.equal(english.reply, "send me the screenshot and I'll send you the files.");
   assert.equal(english.orderAction, "claim_payment");
 
   const spanishPaid = decisionFromModel(
     '{"reply":"I paid","intent":"payment_claim","packId":null,"needsHuman":false}',
     { ...payCtx, language: "es", openOrder: quotedOrder },
   );
-  assert.equal(spanishPaid.reply, "mándame la captura del pago y te mando los archivos.");
+  assert.equal(spanishPaid.reply, "mándame la captura y te mando los archivos.");
 
   const spanishPrompt = systemPrompt({ ...payCtx, language: "es" });
   assert.match(spanishPrompt, /This turn is Spanish/);
   assert.match(spanishPrompt, /casual/);
+  assert.match(spanishPrompt, /tengo 18/);
+  assert.match(spanishPrompt, /estoy en US/);
+});
+
+test("age and location stay plain and do not invent a biography", () => {
+  assert.equal(decideDeterministic("how old are you", payCtx)?.reply, "I'm 18.");
+  assert.equal(decideDeterministic("what's your age?", payCtx)?.reply, "I'm 18.");
+  assert.equal(decideDeterministic("cuántos años tienes", payCtx)?.reply, "tengo 18.");
+  assert.equal(decideDeterministic("qué edad tienes?", payCtx)?.reply, "tengo 18.");
+  assert.equal(decideDeterministic("where are you", payCtx)?.reply, "I'm in the US.");
+  assert.equal(decideDeterministic("where do you live?", payCtx)?.reply, "I'm in the US.");
+  assert.equal(decideDeterministic("what city are you in", payCtx)?.reply, "I'm in the US.");
+  assert.equal(decideDeterministic("dónde estás", payCtx)?.reply, "estoy en US.");
+  assert.equal(decideDeterministic("de dónde eres?", payCtx)?.reply, "estoy en US.");
+  assert.equal(decideDeterministic("where do I pay", payCtx), null);
+  assert.doesNotMatch(String(decideDeterministic("where are you from?", payCtx)?.reply), /california|new york|school|boyfriend/i);
+});
+
+test("an English age question stays English after a Spanish order", async () => {
+  const store = createMemoryStore();
+  await handleIncoming(store, {
+    subscriberId: "age",
+    text: "una foto",
+    firstName: null,
+    igUsername: null,
+  });
+  const decision = await handleIncoming(store, {
+    subscriberId: "age",
+    text: "how old are you",
+    firstName: null,
+    igUsername: null,
+  });
+  assert.equal(decision.reply, "I'm 18.");
+  assert.equal((await store.listOrders("verified")).length, 0);
+});
+
+test("a Spanish location question is answered in Spanish", async () => {
+  const store = createMemoryStore();
+  const decision = await handleIncoming(store, {
+    subscriberId: "loc",
+    text: "dónde estás",
+    firstName: null,
+    igUsername: null,
+  });
+  assert.equal(decision.reply, "estoy en US.");
 });
