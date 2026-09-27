@@ -119,9 +119,18 @@ export function dynamicBlock(decision: Decision): Record<string, unknown> {
     actions.push({ action: "add_tag", tag_name: "payment_pending" });
   }
 
+  const messages: Array<Record<string, string>> = [];
+  const text = decision.reply.trim();
+  if (text) messages.push({ type: "text", text });
+  for (const item of decision.media ?? []) {
+    if (messages.length >= 10) break;
+    messages.push({ type: item.type, url: item.url });
+  }
+  if (messages.length === 0) messages.push({ type: "text", text: decision.reply });
+
   const content: Record<string, unknown> = {
     type: "instagram",
-    messages: [{ type: "text", text: decision.reply }],
+    messages,
     actions,
     quick_replies: [],
   };

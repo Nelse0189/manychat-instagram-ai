@@ -111,10 +111,11 @@ app.post("/admin/orders/:id/verify", async (req, res) => {
     res.status(released.status).json({ error: released.error });
     return;
   }
+  const text = filesReadyText();
   res.json({
     order: released.order,
-    downloads: released.downloads,
-    messageToCustomer: filesReadyText(released.order.reference, released.downloads),
+    messages: [{ type: "text", text }, ...released.media],
+    messageToCustomer: text,
   });
 });
 
@@ -131,7 +132,7 @@ app.get("/downloads/:token/:index", async (req, res) => {
     res.status(404).json({ error: "Download not found." });
     return;
   }
-  res.download(filePath);
+  res.sendFile(filePath);
 });
 
 app.listen(config.port, "0.0.0.0", () => {

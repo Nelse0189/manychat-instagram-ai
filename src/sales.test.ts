@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createMemoryStore } from "./memoryStore.js";
 import { handleIncoming } from "./handleIncoming.js";
-import { parseIncoming } from "./manychat.js";
+import { dynamicBlock, parseIncoming } from "./manychat.js";
 import {
   decisionFromModel,
   decideDeterministic,
@@ -116,7 +116,7 @@ test("saying they paid asks for a screenshot and does not release files", async 
   assert.equal((await store.listOrders("pending_verification")).length, 1);
 });
 
-test("a screenshot placeholder fulfills an open order with download links", async () => {
+test("a screenshot sends the photo as a message and not a download link", async () => {
   const store = createMemoryStore();
   await handleIncoming(store, {
     subscriberId: "123",
@@ -127,9 +127,18 @@ test("a screenshot placeholder fulfills an open order with download links", asyn
   const incoming = parseIncoming({ id: "123", last_input_text: "[image]" });
   assert.equal(incoming?.paymentScreenshot, true);
   const decision = await handleIncoming(store, incoming!);
-  assert.match(decision.reply, /I checked the screenshot, payment's good\. here:/);
-  assert.match(decision.reply, /\/downloads\//);
-  assert.doesNotMatch(decision.reply, /Here are your files|order reference|AL-|ya vi la captura|still has to match|Venmo/i);
+  assert.equal(decision.reply, "I checked the screenshot, payment's good.");
+  assert.doesNotMatch(decision.reply, /https?:|\/downloads\/|here:/i);
+  assert.equal(decision.media?.length, 1);
+  assert.equal(decision.media?.[0]?.type, "image");
+  assert.match(decision.media?.[0]?.url ?? "", /\/downloads\//);
+  const block = dynamicBlock(decision);
+  const messages = (block.content as { messages: Array<{ type: string; text?: string; url?: string }> }).messages;
+  assert.equal(messages[0]?.type, "text");
+  assert.equal(messages[0]?.text, decision.reply);
+  assert.equal(messages[1]?.type, "image");
+  assert.equal(messages[1]?.url, decision.media?.[0]?.url);
+  assert.doesNotMatch(messages[0]?.text ?? "", /downloads/);
   const orders = await store.listOrders("verified");
   assert.equal(orders.length, 1);
   assert.ok(orders[0]?.downloadToken);
@@ -206,10 +215,34 @@ test("saying the screenshot is attached fulfills the open order", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.match(decision.reply, /I checked the screenshot, payment's good\. here:/);
-  assert.doesNotMatch(decision.reply, /ya vi la captura|still has to match/);
-  assert.match(decision.reply, /\/downloads\//);
+  assert.equal(decision.reply, "I checked the screenshot, payment's good.");
+  assert.doesNotMatch(decision.reply, /ya vi la captura|still has to match|\/downloads\//);
+  assert.equal(decision.media?.length, 3);
+  assert.ok(decision.media?.every((item) => item.type === "image"));
   assert.equal((await store.listOrders("verified")).length, 1);
+});
+
+test("a screenshot sends a video as a video message", async () => {
+  const store = createMemoryStore();
+  await handleIncoming(store, {
+    subscriberId: "vid",
+    text: "one video",
+    firstName: null,
+    igUsername: null,
+  });
+  const decision = await handleIncoming(store, {
+    subscriberId: "vid",
+    text: "[image]",
+    firstName: null,
+    igUsername: null,
+    paymentScreenshot: true,
+  });
+  assert.equal(decision.reply, "I checked the screenshot, payment's good.");
+  assert.equal(decision.media?.length, 1);
+  assert.equal(decision.media?.[0]?.type, "video");
+  const messages = (dynamicBlock(decision).content as { messages: Array<{ type: string; text?: string }> }).messages;
+  assert.equal(messages[1]?.type, "video");
+  assert.doesNotMatch(messages.map((message) => message.text ?? "").join("\n"), /https?:|\/downloads\//);
 });
 
 test("model instructions ask for a screenshot and do not default to Spanish", () => {
@@ -219,6 +252,8 @@ test("model instructions ask for a screenshot and do not default to Spanish", ()
   assert.match(prompt, /I'm 18/);
   assert.match(prompt, /I'm in the US/);
   assert.match(prompt, /screenshot on an open order is the payment verification/i);
+  assert.match(prompt, /sends the photos or videos as chat messages/);
+  assert.doesNotMatch(prompt, /download link/i);
   assert.match(prompt, /Do not say a person still has to match Venmo/);
   assert.match(prompt, /Do not invent a real name or a life story/);
   assert.match(prompt, /casual/);
@@ -330,8 +365,10 @@ test("a screenshot after a Spanish order sends the links in Spanish", async () =
     igUsername: null,
     paymentScreenshot: true,
   });
-  assert.match(decision.reply, /^ya vi la captura, el pago está bien\. aquí:\n/);
-  assert.match(decision.reply, /\/downloads\//);
+  assert.equal(decision.reply, "ya vi la captura, el pago está bien.");
+  assert.doesNotMatch(decision.reply, /\/downloads\/|https?:/);
+  assert.equal(decision.media?.length, 1);
+  assert.equal(decision.media?.[0]?.type, "image");
   assert.doesNotMatch(decision.reply, /I checked the screenshot|payment's good/);
   assert.equal((await store.listOrders("verified")).length, 1);
 });
@@ -350,8 +387,9 @@ test("a Spanish screenshot claim fulfills and an English follow-up does not stay
     firstName: null,
     igUsername: null,
   });
-  assert.match(spanishShot.reply, /ya vi la captura, el pago está bien\. aquí:/);
-  assert.match(spanishShot.reply, /\/downloads\//);
+  assert.equal(spanishShot.reply, "ya vi la captura, el pago está bien.");
+  assert.equal(spanishShot.media?.length, 3);
+  assert.doesNotMatch(spanishShot.reply, /\/downloads\//);
 
   const storeEn = createMemoryStore();
   await handleIncoming(storeEn, {

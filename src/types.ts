@@ -48,6 +48,11 @@ export type IncomingMessage = {
   paymentScreenshot?: boolean;
 };
 
+export type OutboundMedia = {
+  type: "image" | "video";
+  url: string;
+};
+
 export type Decision = {
   reply: string;
   intent: Intent;
@@ -55,4 +60,5 @@ export type Decision = {
   useModel: boolean;
   packId: PackId | null;
   orderAction: "quote" | "claim_payment" | "fulfill" | null;
+  media?: OutboundMedia[];
 };

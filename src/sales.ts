@@ -161,14 +161,15 @@ const ENGLISH_WORDS = new Set([
 ]);
 
 function decision(
-  partial: Omit<Decision, "packId" | "orderAction" | "useModel" | "needsHuman"> &
-    Partial<Pick<Decision, "packId" | "orderAction" | "useModel" | "needsHuman">>,
+  partial: Omit<Decision, "packId" | "orderAction" | "useModel" | "needsHuman" | "media"> &
+    Partial<Pick<Decision, "packId" | "orderAction" | "useModel" | "needsHuman" | "media">>,
 ): Decision {
   return {
     packId: null,
     orderAction: null,
     useModel: false,
     needsHuman: false,
+    media: [],
     ...partial,
   };
 }
@@ -376,13 +377,9 @@ export function paidClaimText(_reference: string, language: ReplyLanguage = "en"
   return "send me the screenshot and I'll send you the files.";
 }
 
-export function filesReadyText(
-  _reference: string,
-  downloads: string[],
-  language: ReplyLanguage = "en",
-): string {
-  if (language === "es") return `ya vi la captura, el pago está bien. aquí:\n${downloads.join("\n")}`;
-  return `I checked the screenshot, payment's good. here:\n${downloads.join("\n")}`;
+export function filesReadyText(language: ReplyLanguage = "en"): string {
+  if (language === "es") return "ya vi la captura, el pago está bien.";
+  return "I checked the screenshot, payment's good.";
 }
 
 export function filesUnavailableText(language: ReplyLanguage = "en"): string {
@@ -696,14 +693,14 @@ export function systemPrompt(ctx: SalesContext): string {
     "Never ask for card numbers or passwords.",
     "If they only say they paid, ask for a screenshot of the payment and do not send files.",
     "A screenshot or image with no open order does not release files. Ask which pack they want.",
-    "A screenshot on an open order is the payment verification. Sound like you checked the screenshot and the payment is good. The server adds the real download links. Do not invent links or an order code. Do not say a person still has to match Venmo or Cash App.",
+    "A screenshot on an open order is the payment verification. Sound like you checked the screenshot and the payment is good. The server sends the photos or videos as chat messages after your text. Do not put a link, a URL, or an order code in the reply. Do not say a person still has to match Venmo or Cash App.",
     `Payments enabled: ${ctx.paymentsEnabled ? "yes" : "no"}.`,
     ctx.paymentsEnabled
       ? "If they choose a pack, set intent to purchase and packId. The server sends where to pay, including the note code."
       : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice, in the customer's language.",
     "If the catalog does not answer, set needsHuman true and say you'll have someone look, in her voice.",
     "If they want messages to stop, set intent to opt_out.",
-    'Match this length. Spanish: "hola, fotos o videos?", "mándame la captura y te mando los archivos.", "ya vi la captura, el pago está bien. aquí:", "tengo 18.", "estoy en US.". English: "hey, photos or videos?", "send me the screenshot and I\'ll send you the files.", "I checked the screenshot, payment\'s good. here:", "I\'m 18.", "I\'m in the US.".',
+    'Match this length. Spanish: "hola, fotos o videos?", "mándame la captura y te mando los archivos.", "ya vi la captura, el pago está bien.", "tengo 18.", "estoy en US.". English: "hey, photos or videos?", "send me the screenshot and I\'ll send you the files.", "I checked the screenshot, payment\'s good.", "I\'m 18.", "I\'m in the US.".',
     'Return only JSON: {"reply": string, "intent": "browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other", "packId": "photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null, "needsHuman": boolean}',
   ].join("\n");
 }

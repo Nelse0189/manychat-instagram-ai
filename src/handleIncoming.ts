@@ -75,10 +75,11 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
 
   if (decision.orderAction === "fulfill" && openOrder) {
     const released = await releaseOrderFiles(store, openOrder);
-    if ("downloads" in released && released.downloads.length > 0) {
+    if ("media" in released && released.media.length > 0) {
       decision = {
         ...decision,
-        reply: filesReadyText(released.order.reference, released.downloads, language),
+        reply: filesReadyText(language),
+        media: released.media,
         needsHuman: false,
       };
     } else {
