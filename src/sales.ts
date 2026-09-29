@@ -367,9 +367,9 @@ export function paymentInstructions(order: Order, ctx: SalesContext): string {
   const pack = spokenPack(order.packName, language);
   const how = payWith(ctx, language);
   if (language === "es") {
-    return `${pack} $${order.amountUsd}. ${how}. pon ${order.reference} en la nota y mándame la captura, porfa.`;
+    return `${pack} $${order.amountUsd}. ${how}. mándame la captura cuando pagues.`;
   }
-  return `${pack} is $${order.amountUsd}. ${how}. put ${order.reference} in the note and send me the screenshot.`;
+  return `${pack} is $${order.amountUsd}. ${how}. send me the screenshot when you pay.`;
 }
 
 export function paidClaimText(_reference: string, language: ReplyLanguage = "en"): string {
@@ -693,10 +693,10 @@ export function systemPrompt(ctx: SalesContext): string {
     "Never ask for card numbers or passwords.",
     "If they only say they paid, ask for a screenshot of the payment and do not send files.",
     "A screenshot or image with no open order does not release files. Ask which pack they want.",
-    "A screenshot on an open order is the payment verification. Sound like you checked the screenshot and the payment is good. The server sends the photos or videos as chat messages after your text. Do not put a link, a URL, or an order code in the reply. Do not say a person still has to match Venmo or Cash App.",
+    "A screenshot on an open order is the payment verification. Sound like you checked the screenshot and the payment is good. The server sends the photos or videos as chat messages after your text. Do not put a link, a URL, or an order code in the reply. Do not ask them to put a code in the Venmo or Cash App note. Do not say a person still has to match Venmo or Cash App.",
     `Payments enabled: ${ctx.paymentsEnabled ? "yes" : "no"}.`,
     ctx.paymentsEnabled
-      ? "If they choose a pack, set intent to purchase and packId. The server sends where to pay, including the note code."
+      ? "If they choose a pack, set intent to purchase and packId. The server sends the price and where to pay. Do not mention an order code or a payment note."
       : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice, in the customer's language.",
     "If the catalog does not answer, set needsHuman true and say you'll have someone look, in her voice.",
     "If they want messages to stop, set intent to opt_out.",

@@ -86,7 +86,8 @@ test("handleIncoming tells the client where to send the money", async () => {
   assert.match(decision.reply, /one photo is \$15/);
   assert.match(decision.reply, /Venmo @bluejays0137/);
   assert.match(decision.reply, /Cash App \$Arialluxe/);
-  assert.match(decision.reply, /put AL-[0-9A-F]+ in the note and send me the screenshot/);
+  assert.match(decision.reply, /send me the screenshot when you pay/);
+  assert.doesNotMatch(decision.reply, /AL-|in the note|en la nota/);
   assert.doesNotMatch(decision.reply, /not treated as payment|screenshot is not|mándame|pon /i);
   const orders = await store.listOrders("quoted");
   assert.equal(orders.length, 1);
@@ -254,6 +255,8 @@ test("model instructions ask for a screenshot and do not default to Spanish", ()
   assert.match(prompt, /screenshot on an open order is the payment verification/i);
   assert.match(prompt, /sends the photos or videos as chat messages/);
   assert.doesNotMatch(prompt, /download link/i);
+  assert.match(prompt, /Do not ask them to put a code in the Venmo or Cash App note/);
+  assert.doesNotMatch(prompt, /including the note code|en la nota|put .+ in the note/i);
   assert.match(prompt, /Do not say a person still has to match Venmo/);
   assert.match(prompt, /Do not invent a real name or a life story/);
   assert.match(prompt, /casual/);
@@ -293,12 +296,14 @@ const payCtx: SalesContext = {
 test("Spanish and English quotes keep the same casual payment line", () => {
   assert.equal(
     paymentInstructions(quotedOrder, { ...payCtx, language: "es" }),
-    "una foto $15. Venmo @bluejays0137 o Cash App $Arialluxe. pon AL-1A2B3C en la nota y mándame la captura, porfa.",
+    "una foto $15. Venmo @bluejays0137 o Cash App $Arialluxe. mándame la captura cuando pagues.",
   );
   assert.equal(
     paymentInstructions(quotedOrder, { ...payCtx, language: "en" }),
-    "one photo is $15. Venmo @bluejays0137 or Cash App $Arialluxe. put AL-1A2B3C in the note and send me the screenshot.",
+    "one photo is $15. Venmo @bluejays0137 or Cash App $Arialluxe. send me the screenshot when you pay.",
   );
+  assert.doesNotMatch(paymentInstructions(quotedOrder, { ...payCtx, language: "en" }), /AL-|in the note/);
+  assert.doesNotMatch(paymentInstructions(quotedOrder, { ...payCtx, language: "es" }), /AL-|en la nota/);
 });
 
 test("an English sentence is quoted in English", async () => {
@@ -325,7 +330,7 @@ test("a Spanish pack request is quoted in Spanish", async () => {
   });
   assert.match(
     decision.reply,
-    /una foto \$15\. Venmo @bluejays0137 o Cash App \$Arialluxe\. pon AL-[0-9A-F]+ en la nota y mándame la captura, porfa\./,
+    /una foto \$15\. Venmo @bluejays0137 o Cash App \$Arialluxe\. mándame la captura cuando pagues\./,
   );
   assert.doesNotMatch(decision.reply, /send me the screenshot|put /);
 });
