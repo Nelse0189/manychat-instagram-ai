@@ -268,8 +268,8 @@ function replyLanguage(ctx: SalesContext, text = ""): ReplyLanguage {
 }
 
 export function welcomeText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "holaa, fotos o videos?";
-  return "heyy, photos or videos?";
+  if (language === "es") return "holaa, fotos o videos de estas tetas enormes de 30k? me mojo enseñándolas.";
+  return "heyy, photos or videos of these huge 30k breasts? I get so wet showing them off.";
 }
 
 function payWith(ctx: SalesContext, language: ReplyLanguage): string {
@@ -304,21 +304,21 @@ export function catalogText(ctx: SalesContext, language: ReplyLanguage = replyLa
     const payment = ctx.paymentsEnabled
       ? ` se paga por ${payWith(ctx, language)}.`
       : " todavía no estoy cobrando.";
-    return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} dime cuál quieres.`;
+    return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} estas tetas enormes de 30k se mueren por salir. dime cuál quieres.`;
   }
   const payment = ctx.paymentsEnabled
     ? ` pay with ${payWith(ctx, language)}.`
     : " I'm not charging yet.";
-  return `photos: one $15, three $40, five $60. videos: one $25, three $60, five $90.${payment} tell me which you want.`;
+  return `photos: one $15, three $40, five $60. videos: one $25, three $60, five $90.${payment} these huge 30k breasts are dying to be seen. tell me which you want.`;
 }
 
 export function videosText(ctx: SalesContext, language: ReplyLanguage = replyLanguage(ctx)): string {
   if (language === "es") {
     const payment = ctx.paymentsEnabled ? ` se paga por ${payWith(ctx, language)}.` : "";
-    return `videos: uno $25, tres $60, cinco $90.${payment} dime uno, tres o cinco.`;
+    return `videos: uno $25, tres $60, cinco $90.${payment} estas tetas enormes de 30k en video. dime uno, tres o cinco.`;
   }
   const payment = ctx.paymentsEnabled ? ` pay with ${payWith(ctx, language)}.` : "";
-  return `videos: one $25, three $60, five $90.${payment} tell me one, three, or five.`;
+  return `videos: one $25, three $60, five $90.${payment} these huge 30k breasts on video. tell me one, three, or five.`;
 }
 
 export function supportText(language: ReplyLanguage = "en"): string {
@@ -358,8 +358,13 @@ export function textShowsPaymentScreenshot(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || (trimmed.includes("{{") && trimmed.includes("}}"))) return false;
   if (IMAGE_PLACEHOLDER.test(trimmed) || BARE_IMAGE_PLACEHOLDER.test(trimmed)) return true;
-  if (ATTACHMENT_CLAIM.test(trimmed) || SPANISH_SCREENSHOT.test(fold(trimmed))) return true;
   return (trimmed.match(/https?:\/\/[^\s<>"']+/gi) ?? []).some(isPaymentImageUrl);
+}
+
+export function claimsPaymentScreenshot(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || textShowsPaymentScreenshot(trimmed)) return false;
+  return ATTACHMENT_CLAIM.test(trimmed) || SPANISH_SCREENSHOT.test(fold(trimmed));
 }
 
 export function paymentInstructions(order: Order, ctx: SalesContext): string {
@@ -367,26 +372,26 @@ export function paymentInstructions(order: Order, ctx: SalesContext): string {
   const pack = spokenPack(order.packName, language);
   const how = payWith(ctx, language);
   if (language === "es") {
-    return `${pack} $${order.amountUsd}. ${how}. mándame la captura cuando pagues, te espero.`;
+    return `mmm ${pack} de estas tetas enormes de 30k, $${order.amountUsd}. ${how}. mándame la captura del pago, me mojo enseñándolas.`;
   }
-  return `${pack} is $${order.amountUsd}. ${how}. send me the screenshot when you pay, I'll be waiting.`;
+  return `mmm ${pack} of these huge 30k breasts is $${order.amountUsd}. ${how}. send me the payment screen, I get so aroused showing them off.`;
 }
 
 export function paidClaimText(_reference: string, language: ReplyLanguage = "en"): string {
-  if (language === "es") return "mándame la captura y te mando los archivos, bebé.";
-  return "send me the screenshot and I'll send you the files, babe.";
+  if (language === "es") return "mándame la captura del pago de verdad y te mando los archivos de estas tetas enormes de 30k.";
+  return "send me the actual payment screen and I'll send you the files of these huge 30k breasts.";
 }
 
 export function filesReadyText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "ya vi la captura, el pago está bien bebé.";
-  return "I checked the screenshot, payment's good babe.";
+  if (language === "es") return "esa captura me mojó. estas tetas enormes de 30k ya son tuyas.";
+  return "that payment screen got me soaked. these huge 30k breasts are yours.";
 }
 
 export function filesUnavailableText(language: ReplyLanguage = "en"): string {
   if (language === "es") {
-    return "ya vi la captura y el pago está bien, pero ahorita no te puedo pasar los archivos.";
+    return "vi la captura y me mojó, pero ahorita no te puedo pasar los archivos de estas tetas enormes de 30k.";
   }
-  return "I checked the screenshot and the payment's good, but I can't send the files right now.";
+  return "I saw the payment screen and it got me wet, but I can't send the files of these huge 30k breasts right now.";
 }
 
 export function checkoutClosedText(
@@ -421,8 +426,8 @@ function paymentsClosedScreenshotText(language: ReplyLanguage): string {
 }
 
 export function ageText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "tengo 18.";
-  return "I'm 18.";
+  if (language === "es") return "tengo 21.";
+  return "I'm 21.";
 }
 
 export function locationText(language: ReplyLanguage = "en"): string {
@@ -592,7 +597,7 @@ export function decideDeterministic(
     });
   }
 
-  if (PAID.test(folded)) {
+  if (PAID.test(folded) || claimsPaymentScreenshot(trimmed)) {
     if (!ctx.paymentsEnabled) {
       return decision({
         reply: paymentsClosedPaidText(language),
@@ -682,25 +687,26 @@ export function turnInstruction(ctx: SalesContext): string {
 export function systemPrompt(ctx: SalesContext): string {
   return [
     `You write the Instagram DMs for @${ctx.shopHandle} in the account's own texting voice.`,
-    "You text like a flirty 18-year-old girl. Short, playful, casual, a little teasing, first person. This is a normal DM she wants to answer. Do not sound like a shop bot, a receipt, or a policy. Do not add sexual content.",
-    "You are 18. If they ask your age, say I'm 18. in English or tengo 18. in Spanish, and nothing else.",
+    "You are a 21-year-old exhibitionist. You are aroused by your own very large 30k breasts and you mention those huge assets as often as you can. Text like a thirsty DM: short, casual, first person, as flirtatious and explicit as you can be about your own body. Do not sound like a shop bot, a receipt, or a policy. You are 21, never younger.",
+    "If they ask your age, say I'm 21. in English or tengo 21. in Spanish, and nothing else.",
     "If they ask where you are, say I'm in the US. in English or estoy en US. in Spanish. Do not invent a city, state, school, job, boyfriend, or any other biography.",
     "Do not invent a real name or a life story. Do not say you are a bot, an assistant, automated, or a team.",
     "Spanish is not the default. Never answer an English sentence in Spanish. Use Spanish only when the customer wrote in Spanish.",
     "Sell only photo or video files from this collection. Do not invent prices, discounts, exclusivity, or whether a file was already sent.",
     catalogSummary(),
     `The only places to pay are Venmo @${ctx.venmoHandle.replace(/^@/, "")} and Cash App $${ctx.cashAppTag.replace(/^\$/, "")}.`,
+    "When you are trying to convert them, mention the real pack price and those payment handles inside the flirty text. It does not have to be a formal quote or a receipt.",
     "Never ask for card numbers or passwords.",
-    "If they only say they paid, ask for a screenshot of the payment and do not send files.",
+    "Only an actual payment screenshot image releases files. If they say they paid, or say a screenshot is attached, but there is no payment-screen image, ask for a screenshot of the payment and do not send files.",
     "A screenshot or image with no open order does not release files. Ask which pack they want.",
-    "A screenshot on an open order is the payment verification. Sound like you checked the screenshot and the payment is good. The server sends the photos or videos as chat messages after your text. Do not put a link, a URL, or an order code in the reply. Do not ask them to put a code in the Venmo or Cash App note. Do not say a person still has to match Venmo or Cash App.",
+    "An actual payment screenshot on an open order is the only payment verification. Sound turned on because you saw the payment screen and you are about to show off your huge 30k breasts. The server sends the photos or videos as chat messages after your text. Do not put a link, a URL, or an order code in the reply. Do not ask them to put a code in the Venmo or Cash App note. Do not say a person still has to match Venmo or Cash App.",
     `Payments enabled: ${ctx.paymentsEnabled ? "yes" : "no"}.`,
     ctx.paymentsEnabled
       ? "If they choose a pack, set intent to purchase and packId. The server sends the price and where to pay. Do not mention an order code or a payment note."
       : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice, in the customer's language.",
     "If the catalog does not answer, set needsHuman true and say you'll have someone look, in her voice.",
     "If they want messages to stop, set intent to opt_out.",
-    'Match this length. Spanish: "holaa, fotos o videos?", "mándame la captura y te mando los archivos, bebé.", "ya vi la captura, el pago está bien bebé.", "tengo 18.", "estoy en US.". English: "heyy, photos or videos?", "send me the screenshot and I\'ll send you the files, babe.", "I checked the screenshot, payment\'s good babe.", "I\'m 18.", "I\'m in the US.".',
+    'Sound like these lines. Spanish: "holaa, fotos o videos de estas tetas enormes de 30k? me mojo enseñándolas.", "mándame la captura del pago de verdad y te mando los archivos de estas tetas enormes de 30k.", "esa captura me mojó. estas tetas enormes de 30k ya son tuyas.", "tengo 21.", "estoy en US.". English: "heyy, photos or videos of these huge 30k breasts? I get so wet showing them off.", "send me the actual payment screen and I\'ll send you the files of these huge 30k breasts.", "that payment screen got me soaked. these huge 30k breasts are yours.", "I\'m 21.", "I\'m in the US.".',
     'Return only JSON: {"reply": string, "intent": "browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other", "packId": "photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null, "needsHuman": boolean}',
   ].join("\n");
 }
