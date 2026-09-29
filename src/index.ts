@@ -8,6 +8,7 @@ import { dynamicBlock, parseIncoming } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
 import { resolveReplyLanguage, supportText } from "./sales.js";
 import type { Store } from "./store.js";
+import { sleep, typingDelayMs } from "./typingDelay.js";
 
 const missing = missingProductionSecrets();
 if (missing.length > 0) {
@@ -62,14 +63,18 @@ app.post("/manychat/dynamic", async (req, res) => {
     return;
   }
 
+  const started = Date.now();
   try {
     const decision = await handleIncoming(store, incoming);
+    await sleep(typingDelayMs({ replyText: decision.reply, elapsedMs: Date.now() - started }));
     res.json(dynamicBlock(decision));
   } catch (error) {
     console.error(error);
+    const reply = supportText(resolveReplyLanguage(incoming.text));
+    await sleep(typingDelayMs({ replyText: reply, elapsedMs: Date.now() - started }));
     res.json(
       dynamicBlock({
-        reply: supportText(resolveReplyLanguage(incoming.text)),
+        reply,
         intent: "support",
         needsHuman: true,
         useModel: false,
