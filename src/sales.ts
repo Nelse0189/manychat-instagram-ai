@@ -268,8 +268,8 @@ function replyLanguage(ctx: SalesContext, text = ""): ReplyLanguage {
 }
 
 export function welcomeText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "hola, fotos o videos?";
-  return "hey, photos or videos?";
+  if (language === "es") return "holaa, fotos o videos?";
+  return "heyy, photos or videos?";
 }
 
 function payWith(ctx: SalesContext, language: ReplyLanguage): string {
@@ -367,19 +367,19 @@ export function paymentInstructions(order: Order, ctx: SalesContext): string {
   const pack = spokenPack(order.packName, language);
   const how = payWith(ctx, language);
   if (language === "es") {
-    return `${pack} $${order.amountUsd}. ${how}. mándame la captura cuando pagues.`;
+    return `${pack} $${order.amountUsd}. ${how}. mándame la captura cuando pagues, te espero.`;
   }
-  return `${pack} is $${order.amountUsd}. ${how}. send me the screenshot when you pay.`;
+  return `${pack} is $${order.amountUsd}. ${how}. send me the screenshot when you pay, I'll be waiting.`;
 }
 
 export function paidClaimText(_reference: string, language: ReplyLanguage = "en"): string {
-  if (language === "es") return "mándame la captura y te mando los archivos.";
-  return "send me the screenshot and I'll send you the files.";
+  if (language === "es") return "mándame la captura y te mando los archivos, bebé.";
+  return "send me the screenshot and I'll send you the files, babe.";
 }
 
 export function filesReadyText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "ya vi la captura, el pago está bien.";
-  return "I checked the screenshot, payment's good.";
+  if (language === "es") return "ya vi la captura, el pago está bien bebé.";
+  return "I checked the screenshot, payment's good babe.";
 }
 
 export function filesUnavailableText(language: ReplyLanguage = "en"): string {
@@ -673,19 +673,19 @@ const INTENTS = new Set([
   "other",
 ]);
 
-export function systemPrompt(ctx: SalesContext): string {
+export function turnInstruction(ctx: SalesContext): string {
   const language = replyLanguage(ctx);
-  const languageLine =
-    language === "es"
-      ? "This turn is Spanish. Reply in casual Spanish only."
-      : "This turn is English. Reply in casual English only. Do not answer in Spanish.";
+  if (language === "es") return "This turn is Spanish. Reply in casual Spanish only.";
+  return "This turn is English. Reply in casual English only. Do not answer in Spanish.";
+}
+
+export function systemPrompt(ctx: SalesContext): string {
   return [
     `You write the Instagram DMs for @${ctx.shopHandle} in the account's own texting voice.`,
-    "You text like an 18-year-old girl. Short, casual, first person. This is a normal DM. Do not sound like a shop bot, a receipt, or a policy. Do not add sexual content.",
+    "You text like a flirty 18-year-old girl. Short, playful, casual, a little teasing, first person. This is a normal DM she wants to answer. Do not sound like a shop bot, a receipt, or a policy. Do not add sexual content.",
     "You are 18. If they ask your age, say I'm 18. in English or tengo 18. in Spanish, and nothing else.",
     "If they ask where you are, say I'm in the US. in English or estoy en US. in Spanish. Do not invent a city, state, school, job, boyfriend, or any other biography.",
     "Do not invent a real name or a life story. Do not say you are a bot, an assistant, automated, or a team.",
-    languageLine,
     "Spanish is not the default. Never answer an English sentence in Spanish. Use Spanish only when the customer wrote in Spanish.",
     "Sell only photo or video files from this collection. Do not invent prices, discounts, exclusivity, or whether a file was already sent.",
     catalogSummary(),
@@ -700,7 +700,7 @@ export function systemPrompt(ctx: SalesContext): string {
       : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice, in the customer's language.",
     "If the catalog does not answer, set needsHuman true and say you'll have someone look, in her voice.",
     "If they want messages to stop, set intent to opt_out.",
-    'Match this length. Spanish: "hola, fotos o videos?", "mándame la captura y te mando los archivos.", "ya vi la captura, el pago está bien.", "tengo 18.", "estoy en US.". English: "hey, photos or videos?", "send me the screenshot and I\'ll send you the files.", "I checked the screenshot, payment\'s good.", "I\'m 18.", "I\'m in the US.".',
+    'Match this length. Spanish: "holaa, fotos o videos?", "mándame la captura y te mando los archivos, bebé.", "ya vi la captura, el pago está bien bebé.", "tengo 18.", "estoy en US.". English: "heyy, photos or videos?", "send me the screenshot and I\'ll send you the files, babe.", "I checked the screenshot, payment\'s good babe.", "I\'m 18.", "I\'m in the US.".',
     'Return only JSON: {"reply": string, "intent": "browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other", "packId": "photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null, "needsHuman": boolean}',
   ].join("\n");
 }
