@@ -23,6 +23,10 @@ export const config = {
   venmoHandle: process.env.VENMO_HANDLE ?? "bluejays0137",
   cashAppTag: process.env.CASHAPP_CASHTAG ?? "Arialluxe",
   shopHandle: process.env.SHOP_HANDLE ?? "arial_luxe",
+  cloudTasksProject: process.env.CLOUD_TASKS_PROJECT || process.env.FIREBASE_PROJECT_ID || "",
+  cloudTasksLocation: process.env.CLOUD_TASKS_LOCATION || "us-central1",
+  cloudTasksQueue: process.env.CLOUD_TASKS_QUEUE || "shop-assistant-replies",
+  taskTargetUrl: (process.env.TASK_TARGET_URL ?? "").replace(/\/$/, ""),
 };
 
 export function firebaseConfigured(): boolean {
@@ -37,6 +41,9 @@ export function missingProductionSecrets(): string[] {
   if (!config.webhookSecret) missing.push("WEBHOOK_SECRET");
   if (!config.adminSecret) missing.push("ADMIN_SECRET");
   if (!config.openRouterApiKey) missing.push("OPENROUTER_API_KEY");
+  if (!config.manychatApiToken) missing.push("MANYCHAT_API_TOKEN");
+  if (!config.taskTargetUrl) missing.push("TASK_TARGET_URL");
+  if (!config.cloudTasksProject) missing.push("CLOUD_TASKS_PROJECT");
   if (!firebaseConfigured()) {
     missing.push("FIREBASE_PROJECT_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY");
   }

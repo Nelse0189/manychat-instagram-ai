@@ -2,8 +2,9 @@ import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getFirestore, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import { config, firebaseConfigured } from "./config.js";
 import { orderReference } from "./memoryStore.js";
+import { mergePendingReply } from "./pendingReply.js";
 import type { NewOrder, Store } from "./store.js";
-import type { ChatMessage, Order, OrderStatus, Subscriber } from "./types.js";
+import type { ChatMessage, Order, OrderStatus, OutboundMedia, PackId, PendingReply, Subscriber } from "./types.js";
 
 let db: Firestore | null = null;
 
@@ -50,6 +51,34 @@ function orderFromDoc(id: string, data: DocumentData): Order {
     downloadToken: typeof data.downloadToken === "string" ? data.downloadToken : null,
     createdAt: String(data.createdAt),
     updatedAt: String(data.updatedAt),
+  };
+}
+
+function pendingFromDoc(id: string, data: DocumentData): PendingReply {
+  const media: OutboundMedia[] = Array.isArray(data.media)
+    ? data.media.flatMap((item: unknown) => {
+        const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+        if (!record) return [];
+        const type = record.type === "video" ? "video" : record.type === "image" ? "image" : null;
+        if (!type || typeof record.url !== "string" || !record.url) return [];
+        return [{ type, url: record.url }];
+      })
+    : [];
+  const packId = typeof data.releasedPackId === "string" ? (data.releasedPackId as PackId) : null;
+  return {
+    subscriberId: id,
+    dueAt: String(data.dueAt ?? ""),
+    taskName: typeof data.taskName === "string" ? data.taskName : null,
+    media,
+    filesReady: data.filesReady === true,
+    filesFailed: data.filesFailed === true,
+    sawPaymentScreenshot: data.sawPaymentScreenshot === true,
+    quoted: data.quoted === true,
+    claimed: data.claimed === true,
+    releasedPackId: packId,
+    releasedPackName: typeof data.releasedPackName === "string" ? data.releasedPackName : null,
+    createdAt: String(data.createdAt ?? ""),
+    updatedAt: String(data.updatedAt ?? ""),
   };
 }
 
@@ -168,6 +197,44 @@ export function createFirestoreStore(): Store {
         : firestore.collection("orders").orderBy("createdAt", "desc");
       const snap = await query.limit(50).get();
       return snap.docs.map((doc) => orderFromDoc(doc.id, doc.data()));
+    },
+    async hasAssistantReply(subscriberId) {
+      const snap = await firestore
+        .collection("subscribers")
+        .doc(subscriberId)
+        .collection("messages")
+        .where("role", "==", "assistant")
+        .limit(1)
+        .get();
+      return !snap.empty;
+    },
+    async getPendingReply(subscriberId) {
+      const snap = await firestore.collection("pendingReplies").doc(subscriberId).get();
+      if (!snap.exists) return null;
+      return pendingFromDoc(snap.id, snap.data() ?? {});
+    },
+    async mergePendingReply(patch) {
+      const ref = firestore.collection("pendingReplies").doc(patch.subscriberId);
+      return firestore.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const current = snap.exists ? pendingFromDoc(snap.id, snap.data() ?? {}) : null;
+        const pending = mergePendingReply(current, patch);
+        tx.set(ref, pending);
+        return { pending, created: current == null };
+      });
+    },
+    async attachPendingTask(subscriberId, taskName) {
+      const ref = firestore.collection("pendingReplies").doc(subscriberId);
+      await firestore.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const current = pendingFromDoc(snap.id, snap.data() ?? {});
+        if (current.taskName) return;
+        tx.update(ref, { taskName });
+      });
+    },
+    async deletePendingReply(subscriberId) {
+      await firestore.collection("pendingReplies").doc(subscriberId).delete();
     },
   };
 }

@@ -107,6 +107,38 @@ export function parseIncoming(body: unknown): IncomingMessage | null {
   };
 }
 
+export function contentMessages(decision: Decision): Array<Record<string, string>> {
+  const messages: Array<Record<string, string>> = [];
+  const text = decision.reply.trim();
+  if (text) messages.push({ type: "text", text });
+  for (const item of decision.media ?? []) {
+    if (messages.length >= 10) break;
+    messages.push({ type: item.type, url: item.url });
+  }
+  return messages;
+}
+
+function withNextMessageCallback(content: Record<string, unknown>): Record<string, unknown> {
+  if (!config.publicBaseUrl.startsWith("https://")) return content;
+  const headers: Record<string, string> = {};
+  if (config.webhookSecret) headers["x-webhook-secret"] = config.webhookSecret;
+  return {
+    ...content,
+    external_message_callback: {
+      url: `${config.publicBaseUrl}/manychat/dynamic`,
+      method: "post",
+      headers,
+      payload: {
+        id: "{{user_id}}",
+        first_name: "{{first_name}}",
+        ig_username: "{{ig_username}}",
+        last_input_text: "{{last_input_text}}",
+      },
+      timeout: 86400,
+    },
+  };
+}
+
 export function dynamicBlock(decision: Decision): Record<string, unknown> {
   const actions: Array<Record<string, string>> = [];
   if (decision.intent === "opt_out") {
@@ -119,38 +151,65 @@ export function dynamicBlock(decision: Decision): Record<string, unknown> {
     actions.push({ action: "add_tag", tag_name: "payment_pending" });
   }
 
-  const messages: Array<Record<string, string>> = [];
-  const text = decision.reply.trim();
-  if (text) messages.push({ type: "text", text });
-  for (const item of decision.media ?? []) {
-    if (messages.length >= 10) break;
-    messages.push({ type: item.type, url: item.url });
-  }
+  const messages = contentMessages(decision);
   if (messages.length === 0) messages.push({ type: "text", text: decision.reply });
 
-  const content: Record<string, unknown> = {
-    type: "instagram",
-    messages,
-    actions,
-    quick_replies: [],
+  return {
+    version: "v2",
+    content: withNextMessageCallback({
+      type: "instagram",
+      messages,
+      actions,
+      quick_replies: [],
+    }),
   };
+}
 
-  if (config.publicBaseUrl.startsWith("https://")) {
-    const headers: Record<string, string> = {};
-    if (config.webhookSecret) headers["x-webhook-secret"] = config.webhookSecret;
-    content.external_message_callback = {
-      url: `${config.publicBaseUrl}/manychat/dynamic`,
-      method: "post",
-      headers,
-      payload: {
-        id: "{{user_id}}",
-        first_name: "{{first_name}}",
-        ig_username: "{{ig_username}}",
-        last_input_text: "{{last_input_text}}",
-      },
-      timeout: 86400,
-    };
+/** Nothing for the customer yet. The first reply is sent later by the ManyChat API. */
+export function silentDynamicBlock(): Record<string, unknown> {
+  return {
+    version: "v2",
+    content: withNextMessageCallback({
+      type: "instagram",
+      messages: [],
+      actions: [],
+      quick_replies: [],
+    }),
+  };
+}
+
+export async function sendManychatContent(subscriberId: string, decision: Decision): Promise<void> {
+  if (!config.manychatApiToken) {
+    throw new Error("MANYCHAT_API_TOKEN is not set.");
   }
-
-  return { version: "v2", content };
+  const messages = contentMessages(decision);
+  if (messages.length === 0) {
+    throw new Error("ManyChat send had no messages.");
+  }
+  const asNumber = Number(subscriberId);
+  const subscriber_id = Number.isSafeInteger(asNumber) && String(asNumber) === subscriberId
+    ? asNumber
+    : subscriberId;
+  const response = await fetch("https://api.manychat.com/fb/sending/sendContent", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.manychatApiToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      subscriber_id,
+      data: {
+        version: "v2",
+        content: {
+          type: "instagram",
+          messages,
+          actions: [],
+          quick_replies: [],
+        },
+      },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`ManyChat send failed (${response.status}).`);
+  }
 }

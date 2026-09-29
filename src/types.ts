@@ -1,5 +1,7 @@
 import type { PackId } from "./catalog.js";
 
+export type { PackId };
+
 export type Intent =
   | "browse"
   | "purchase"
@@ -61,4 +63,20 @@ export type Decision = {
   packId: PackId | null;
   orderAction: "quote" | "claim_payment" | "fulfill" | null;
   media?: OutboundMedia[];
+};
+
+export type PendingReply = {
+  subscriberId: string;
+  dueAt: string;
+  taskName: string | null;
+  media: OutboundMedia[];
+  filesReady: boolean;
+  filesFailed: boolean;
+  sawPaymentScreenshot: boolean;
+  quoted: boolean;
+  claimed: boolean;
+  releasedPackId: PackId | null;
+  releasedPackName: string | null;
+  createdAt: string;
+  updatedAt: string;
 };

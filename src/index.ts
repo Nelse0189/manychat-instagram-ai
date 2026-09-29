@@ -2,13 +2,12 @@ import express from "express";
 import { config, firebaseConfigured, missingProductionSecrets } from "./config.js";
 import { createFirestoreStore } from "./firestoreStore.js";
 import { releaseOrderFiles } from "./fulfill.js";
-import { handleIncoming } from "./handleIncoming.js";
 import { resolveMediaFile } from "./library.js";
-import { dynamicBlock, parseIncoming } from "./manychat.js";
+import { createCloudTasksReplyScheduler } from "./cloudTasks.js";
+import { parseIncoming, sendManychatContent } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
-import { resolveReplyLanguage, supportText } from "./sales.js";
+import { acceptShopMessage, deliverScheduledReply } from "./replyGate.js";
 import type { Store } from "./store.js";
-import { sleep, typingDelayMs } from "./typingDelay.js";
 
 const missing = missingProductionSecrets();
 if (missing.length > 0) {
@@ -17,6 +16,7 @@ if (missing.length > 0) {
 }
 
 const store: Store = firebaseConfigured() ? createFirestoreStore() : createMemoryStore();
+const scheduler = createCloudTasksReplyScheduler();
 if (!firebaseConfigured()) {
   console.warn(
     "Firebase credentials are not set. Conversations and orders stay in memory and disappear when the process stops.",
@@ -63,25 +63,41 @@ app.post("/manychat/dynamic", async (req, res) => {
     return;
   }
 
-  const started = Date.now();
   try {
-    const decision = await handleIncoming(store, incoming);
-    await sleep(typingDelayMs({ replyText: decision.reply, elapsedMs: Date.now() - started }));
-    res.json(dynamicBlock(decision));
+    const result = await acceptShopMessage({
+      store,
+      scheduler,
+      incoming,
+      now: Date.now(),
+    });
+    res.status(result.status).json(result.body);
   } catch (error) {
     console.error(error);
-    const reply = supportText(resolveReplyLanguage(incoming.text));
-    await sleep(typingDelayMs({ replyText: reply, elapsedMs: Date.now() - started }));
-    res.json(
-      dynamicBlock({
-        reply,
-        intent: "support",
-        needsHuman: true,
-        useModel: false,
-        packId: null,
-        orderAction: null,
-      }),
-    );
+    res.status(500).json({ error: "Reply was not scheduled." });
+  }
+});
+
+app.post("/tasks/first-reply", async (req, res) => {
+  const header = req.header("x-webhook-secret") ?? req.header("authorization");
+  if (!webhookAllowed(header) && !adminAllowed(header)) {
+    res.status(401).json({ error: "Unauthorized." });
+    return;
+  }
+  const subscriberId = typeof req.body?.subscriberId === "string" ? req.body.subscriberId.trim() : "";
+  if (!subscriberId) {
+    res.status(400).json({ error: "Missing subscriber id." });
+    return;
+  }
+  try {
+    await deliverScheduledReply({
+      store,
+      subscriberId,
+      send: sendManychatContent,
+    });
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Reply was not sent." });
   }
 });
 
