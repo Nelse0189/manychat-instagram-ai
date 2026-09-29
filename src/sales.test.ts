@@ -7,7 +7,7 @@ import {
   decisionFromModel,
   decideDeterministic,
   detectMessageLanguage,
-  paymentInstructions,
+  modelSituation,
   resolveReplyLanguage,
   systemPrompt,
   textShowsPaymentScreenshot,
@@ -15,6 +15,12 @@ import {
   type SalesContext,
 } from "./sales.js";
 import type { Order } from "./types.js";
+import { setReplyGenerator } from "./openrouter.js";
+
+setReplyGenerator(async (ctx, _history, userText) => {
+  const reply = ctx.language === "es" ? `vi esto: ${userText}` : `model saw: ${userText || "opened"}`;
+  return JSON.stringify({ reply, intent: "other", packId: null, needsHuman: false });
+});
 
 const ctx: SalesContext = {
   shopHandle: "arial_luxe",
@@ -61,8 +67,8 @@ test("payment claim without an order does not invent a reference", () => {
     ...ctx,
     paymentsEnabled: true,
   });
-  assert.match(decision!.reply, /nothing's open with you yet/i);
-  assert.doesNotMatch(decision!.reply, /no tengo nada abierto|mándame/);
+  assert.equal(decision?.useModel, true);
+  assert.equal(decision?.reply, "");
   assert.equal(decision?.orderAction, null);
 });
 
@@ -73,6 +79,7 @@ test("choosing a photo pack quotes that pack when payments are open", () => {
     cashAppTag: "Arialluxe",
   });
   assert.equal(decision?.orderAction, "quote");
+  assert.equal(decision?.useModel, true);
   assert.equal(decision?.reply, "");
 });
 
@@ -84,10 +91,8 @@ test("handleIncoming tells the client where to send the money", async () => {
     firstName: "Sam",
     igUsername: "sam",
   });
-  assert.match(decision.reply, /one photo of these huge 30k breasts is \$15/);
-  assert.match(decision.reply, /Venmo @bluejays0137/);
-  assert.match(decision.reply, /Cash App \$Arialluxe/);
-  assert.match(decision.reply, /send me the payment screen/);
+  assert.equal(decision.reply, "model saw: ONE PHOTO");
+  assert.doesNotMatch(decision.reply, /send me the payment screen|Venmo @/);
   assert.doesNotMatch(decision.reply, /AL-|in the note|en la nota/);
   assert.doesNotMatch(decision.reply, /not treated as payment|screenshot is not|mándame|pon /i);
   const orders = await store.listOrders("quoted");
@@ -111,7 +116,7 @@ test("saying they paid asks for a screenshot and does not release files", async 
     firstName: "Sam",
     igUsername: "sam",
   });
-  assert.equal(decision.reply, "send me the actual payment screen and I'll send you the files of these huge 30k breasts.");
+  assert.equal(decision.reply, "model saw: I paid");
   assert.doesNotMatch(decision.reply, /mándame/);
   assert.doesNotMatch(decision.reply, /\/downloads\/|flagged|not treated as payment/i);
   assert.equal((await store.listOrders("verified")).length, 0);
@@ -129,7 +134,7 @@ test("a screenshot sends the photo as a message and not a download link", async 
   const incoming = parseIncoming({ id: "123", last_input_text: "[image]" });
   assert.equal(incoming?.paymentScreenshot, true);
   const decision = await handleIncoming(store, incoming!);
-  assert.equal(decision.reply, "that payment screen got me soaked. these huge 30k breasts are yours.");
+  assert.equal(decision.reply, "model saw: [image]");
   assert.doesNotMatch(decision.reply, /https?:|\/downloads\/|here:/i);
   assert.equal(decision.media?.length, 1);
   assert.equal(decision.media?.[0]?.type, "image");
@@ -197,7 +202,8 @@ test("an image with no open order does not release files", async () => {
     last_input_text: "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=5",
   });
   const decision = await handleIncoming(store, incoming!);
-  assert.match(decision.reply, /don't have an order open/i);
+  assert.match(decision.reply, /model saw/);
+  assert.equal(decision.media?.length ?? 0, 0);
   assert.doesNotMatch(decision.reply, /no tengo nada tuyo|mándame/);
   assert.doesNotMatch(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders()).length, 0);
@@ -217,7 +223,7 @@ test("saying a screenshot is attached does not release files without the image",
     firstName: null,
     igUsername: null,
   });
-  assert.equal(decision.reply, "send me the actual payment screen and I'll send you the files of these huge 30k breasts.");
+  assert.equal(decision.reply, "model saw: here's the screenshot");
   assert.equal(decision.media?.length ?? 0, 0);
   assert.doesNotMatch(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders("verified")).length, 0);
@@ -240,7 +246,7 @@ test("a screenshot sends a video as a video message", async () => {
     igUsername: null,
     paymentScreenshot: true,
   });
-  assert.equal(decision.reply, "that payment screen got me soaked. these huge 30k breasts are yours.");
+  assert.equal(decision.reply, "model saw: [image]");
   assert.equal(decision.media?.length, 1);
   assert.equal(decision.media?.[0]?.type, "video");
   const messages = (dynamicBlock(decision).content as { messages: Array<{ type: string; text?: string }> }).messages;
@@ -263,11 +269,14 @@ test("model instructions ask for a screenshot and do not default to Spanish", ()
   assert.doesNotMatch(prompt, /including the note code|en la nota|put .+ in the note/i);
   assert.match(prompt, /Do not say a person still has to match Venmo/);
   assert.match(prompt, /Do not invent a real name or a life story/);
-  assert.match(prompt, /casual/);
+  assert.match(prompt, /real person texting/);
+  assert.match(prompt, /Do not reuse a template/);
+  assert.match(prompt, /Do not paste them into every reply/);
+  assert.doesNotMatch(prompt, /Sound like these lines/);
   assert.doesNotMatch(prompt, /This turn is English|This turn is Spanish/);
   assert.equal(
     turnInstruction({ ...ctx, paymentsEnabled: true, cashAppTag: "Arialluxe" }),
-    "This turn is English. Reply in casual English only. Do not answer in Spanish.",
+    "This turn is English. Reply in casual English only. Do not answer in Spanish. Sound like a real person texting, and vary it with their latest message instead of a template.",
   );
   assert.match(prompt, /Spanish is not the default/);
   assert.match(prompt, /Never answer an English sentence in Spanish/);
@@ -301,17 +310,21 @@ const payCtx: SalesContext = {
   cashAppTag: "Arialluxe",
 };
 
-test("Spanish and English quotes keep the same casual payment line", () => {
-  assert.equal(
-    paymentInstructions(quotedOrder, { ...payCtx, language: "es" }),
-    "mmm una foto de estas tetas enormes de 30k, $15. Venmo @bluejays0137 o Cash App $Arialluxe. mándame la captura del pago, me mojo enseñándolas.",
-  );
-  assert.equal(
-    paymentInstructions(quotedOrder, { ...payCtx, language: "en" }),
-    "mmm one photo of these huge 30k breasts is $15. Venmo @bluejays0137 or Cash App $Arialluxe. send me the payment screen, I get so aroused showing them off.",
-  );
-  assert.doesNotMatch(paymentInstructions(quotedOrder, { ...payCtx, language: "en" }), /AL-|in the note/);
-  assert.doesNotMatch(paymentInstructions(quotedOrder, { ...payCtx, language: "es" }), /AL-|en la nota/);
+test("an open quote is left for the model and still names the pack price as a fact", () => {
+  const english = decideDeterministic("ONE PHOTO", payCtx);
+  const spanish = decideDeterministic("una foto", { ...payCtx, language: "es" });
+  assert.equal(english?.useModel, true);
+  assert.equal(english?.reply, "");
+  assert.equal(spanish?.useModel, true);
+  assert.equal(spanish?.reply, "");
+  const note = modelSituation("ONE PHOTO", payCtx, {
+    paymentScreenshot: false,
+    filesReady: false,
+    filesFailed: false,
+  });
+  assert.match(note, /One photo at \$15/);
+  assert.match(note, /only if this message calls for it/);
+  assert.doesNotMatch(note, /AL-|in the note/);
 });
 
 test("an English sentence is quoted in English", async () => {
@@ -322,10 +335,8 @@ test("an English sentence is quoted in English", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.match(decision.reply, /one photo of these huge 30k breasts is \$15/);
-  assert.match(decision.reply, /Venmo @bluejays0137 or Cash App \$Arialluxe/);
-  assert.match(decision.reply, /send me the payment screen/);
-  assert.doesNotMatch(decision.reply, /mándame|pon |una foto|aquí/);
+  assert.equal(decision.reply, "model saw: how much is one photo");
+  assert.doesNotMatch(decision.reply, /mándame|pon |una foto|aquí|Venmo @/);
 });
 
 test("a Spanish pack request is quoted in Spanish", async () => {
@@ -336,10 +347,7 @@ test("a Spanish pack request is quoted in Spanish", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.match(
-    decision.reply,
-    /mmm una foto de estas tetas enormes de 30k, \$15\. Venmo @bluejays0137 o Cash App \$Arialluxe\. mándame la captura del pago, me mojo enseñándolas\./,
-  );
+  assert.equal(decision.reply, "vi esto: quiero una foto");
   assert.doesNotMatch(decision.reply, /send me the screenshot|put /);
 });
 
@@ -357,7 +365,7 @@ test("ya pagué asks for the screenshot in Spanish and does not release files", 
     firstName: null,
     igUsername: null,
   });
-  assert.equal(decision.reply, "mándame la captura del pago de verdad y te mando los archivos de estas tetas enormes de 30k.");
+  assert.equal(decision.reply, "vi esto: ya pagué");
   assert.doesNotMatch(decision.reply, /\/downloads\//);
   assert.equal((await store.listOrders("verified")).length, 0);
   assert.equal((await store.listOrders("pending_verification")).length, 1);
@@ -378,7 +386,7 @@ test("a screenshot after a Spanish order sends the links in Spanish", async () =
     igUsername: null,
     paymentScreenshot: true,
   });
-  assert.equal(decision.reply, "esa captura me mojó. estas tetas enormes de 30k ya son tuyas.");
+  assert.equal(decision.reply, "vi esto: [image]");
   assert.doesNotMatch(decision.reply, /\/downloads\/|https?:/);
   assert.equal(decision.media?.length, 1);
   assert.equal(decision.media?.[0]?.type, "image");
@@ -400,10 +408,7 @@ test("a Spanish screenshot claim does not release files and an English follow-up
     firstName: null,
     igUsername: null,
   });
-  assert.equal(
-    spanishShot.reply,
-    "mándame la captura del pago de verdad y te mando los archivos de estas tetas enormes de 30k.",
-  );
+  assert.equal(spanishShot.reply, "vi esto: aquí va la captura");
   assert.equal(spanishShot.media?.length ?? 0, 0);
   assert.doesNotMatch(spanishShot.reply, /\/downloads\//);
   assert.equal((await store.listOrders("verified")).length, 0);
@@ -421,7 +426,7 @@ test("a Spanish screenshot claim does not release files and an English follow-up
     firstName: null,
     igUsername: null,
   });
-  assert.match(englishPaid.reply, /send me the actual payment screen/);
+  assert.equal(englishPaid.reply, "model saw: I paid");
   assert.doesNotMatch(englishPaid.reply, /mándame/);
   assert.equal((await storeEn.listOrders("verified")).length, 0);
 });
@@ -461,8 +466,7 @@ test("a digit after a Spanish DM is quoted in Spanish", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.match(decision.reply, /una foto de estas tetas enormes de 30k, \$15/);
-  assert.match(decision.reply, /mándame la captura/);
+  assert.equal(decision.reply, "vi esto: 1");
   assert.doesNotMatch(decision.reply, /send me the screenshot/);
 });
 
@@ -477,36 +481,50 @@ test("model scripted lines use the conversation language", () => {
     '{"reply":"ya pagué","intent":"payment_claim","packId":null,"needsHuman":false}',
     { ...payCtx, language: "en", openOrder: quotedOrder },
   );
-  assert.equal(english.reply, "send me the actual payment screen and I'll send you the files of these huge 30k breasts.");
+  assert.equal(english.reply, "ya pagué");
   assert.equal(english.orderAction, "claim_payment");
+  assert.equal(english.media?.length ?? 0, 0);
 
   const spanishPaid = decisionFromModel(
     '{"reply":"I paid","intent":"payment_claim","packId":null,"needsHuman":false}',
     { ...payCtx, language: "es", openOrder: quotedOrder },
   );
-  assert.equal(spanishPaid.reply, "mándame la captura del pago de verdad y te mando los archivos de estas tetas enormes de 30k.");
+  assert.equal(spanishPaid.reply, "I paid");
+  assert.equal(spanishPaid.orderAction, "claim_payment");
 
   const spanishPrompt = systemPrompt({ ...payCtx, language: "es" });
   assert.doesNotMatch(spanishPrompt, /This turn is Spanish/);
-  assert.equal(turnInstruction({ ...payCtx, language: "es" }), "This turn is Spanish. Reply in casual Spanish only.");
+  assert.equal(
+    turnInstruction({ ...payCtx, language: "es" }),
+    "This turn is Spanish. Reply in casual Spanish only, like a real person texting. Vary it with what they just said. Do not reuse a stock line.",
+  );
   assert.match(spanishPrompt, /casual/);
   assert.match(spanishPrompt, /tengo 21/);
   assert.match(spanishPrompt, /30k/);
   assert.match(spanishPrompt, /estoy en US/);
 });
 
-test("age and location stay plain and do not invent a biography", () => {
-  assert.equal(decideDeterministic("how old are you", payCtx)?.reply, "I'm 21.");
-  assert.equal(decideDeterministic("what's your age?", payCtx)?.reply, "I'm 21.");
-  assert.equal(decideDeterministic("cuántos años tienes", payCtx)?.reply, "tengo 21.");
-  assert.equal(decideDeterministic("qué edad tienes?", payCtx)?.reply, "tengo 21.");
-  assert.equal(decideDeterministic("where are you", payCtx)?.reply, "I'm in the US.");
-  assert.equal(decideDeterministic("where do you live?", payCtx)?.reply, "I'm in the US.");
-  assert.equal(decideDeterministic("what city are you in", payCtx)?.reply, "I'm in the US.");
-  assert.equal(decideDeterministic("dónde estás", payCtx)?.reply, "estoy en US.");
-  assert.equal(decideDeterministic("de dónde eres?", payCtx)?.reply, "estoy en US.");
+test("age and location go to the model and do not invent a biography", () => {
+  for (const ask of ["how old are you", "what's your age?", "cuántos años tienes", "qué edad tienes?"]) {
+    const decision = decideDeterministic(ask, payCtx);
+    assert.equal(decision?.useModel, true);
+    assert.equal(decision?.reply, "");
+    assert.equal(decision?.orderAction, null);
+  }
+  for (const ask of ["where are you", "where do you live?", "what city are you in", "dónde estás", "de dónde eres?"]) {
+    const decision = decideDeterministic(ask, payCtx);
+    assert.equal(decision?.useModel, true);
+    assert.equal(decision?.reply, "");
+  }
   assert.equal(decideDeterministic("where do I pay", payCtx), null);
-  assert.doesNotMatch(String(decideDeterministic("where are you from?", payCtx)?.reply), /california|new york|school|boyfriend/i);
+  const note = modelSituation("where are you from?", payCtx, {
+    paymentScreenshot: false,
+    filesReady: false,
+    filesFailed: false,
+  });
+  assert.match(note, /You are in the US/);
+  assert.match(note, /Do not invent a city/);
+  assert.doesNotMatch(note, /california|new york/i);
 });
 
 test("an English age question stays English after a Spanish order", async () => {
@@ -523,8 +541,30 @@ test("an English age question stays English after a Spanish order", async () => 
     firstName: null,
     igUsername: null,
   });
-  assert.equal(decision.reply, "I'm 21.");
+  assert.equal(decision.reply, "model saw: how old are you");
+  assert.notEqual(decision.reply, "I'm 21.");
   assert.equal((await store.listOrders("verified")).length, 0);
+});
+
+test("a normal DM is generated from that message and is not a stock line", async () => {
+  const store = createMemoryStore();
+  const first = await handleIncoming(store, {
+    subscriberId: "chat",
+    text: "you up?",
+    firstName: null,
+    igUsername: null,
+  });
+  const second = await handleIncoming(store, {
+    subscriberId: "chat-2",
+    text: "what are you doing",
+    firstName: null,
+    igUsername: null,
+  });
+  assert.equal(first.reply, "model saw: you up?");
+  assert.equal(second.reply, "model saw: what are you doing");
+  assert.notEqual(first.reply, second.reply);
+  assert.equal(first.media?.length ?? 0, 0);
+  assert.equal(second.media?.length ?? 0, 0);
 });
 
 test("a Spanish location question is answered in Spanish", async () => {
@@ -535,5 +575,6 @@ test("a Spanish location question is answered in Spanish", async () => {
     firstName: null,
     igUsername: null,
   });
-  assert.equal(decision.reply, "estoy en US.");
+  assert.equal(decision.reply, "vi esto: dónde estás");
+  assert.notEqual(decision.reply, "estoy en US.");
 });

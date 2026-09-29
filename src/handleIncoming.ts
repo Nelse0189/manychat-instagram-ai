@@ -6,17 +6,18 @@ import type { Store } from "./store.js";
 import { emptySubscriber } from "./store.js";
 import type { Decision, IncomingMessage } from "./types.js";
 import {
+  customerReplyText,
   decideDeterministic,
   decisionFromModel,
-  filesReadyText,
-  filesUnavailableText,
-  paymentInstructions,
+  modelSituation,
   resolveReplyLanguage,
+  supportText,
   textShowsPaymentScreenshot,
   type ReplyLanguage,
   type SalesContext,
 } from "./sales.js";
 import { completeReply } from "./openrouter.js";
+import type { OutboundMedia } from "./types.js";
 
 function salesContext(
   openOrder: Awaited<ReturnType<Store["latestOpenOrder"]>>,
@@ -48,15 +49,67 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
     incoming.paymentScreenshot === true || textShowsPaymentScreenshot(incoming.text);
   let decision = decideDeterministic(incoming.text, ctx, { paymentScreenshot });
 
-  if (!decision) {
-    const raw = await completeReply(ctx, history, incoming.text);
-    decision = decisionFromModel(raw, ctx);
+  let media: OutboundMedia[] = [];
+  let filesFailed = false;
+  if (decision?.orderAction === "fulfill" && openOrder) {
+    const released = await releaseOrderFiles(store, openOrder);
+    if ("media" in released && released.media.length > 0) {
+      media = released.media;
+    } else {
+      filesFailed = true;
+      decision = { ...decision, needsHuman: true, orderAction: null };
+    }
   }
+
+  if (!decision || decision.useModel) {
+    const situation = modelSituation(incoming.text, ctx, {
+      paymentScreenshot,
+      filesReady: media.length > 0,
+      filesFailed,
+    });
+    try {
+      const raw = await completeReply(ctx, history, incoming.text, situation);
+      const reply = customerReplyText(raw);
+      if (!decision) {
+        decision = decisionFromModel(raw, ctx);
+        decision = { ...decision, reply: reply || decision.reply };
+      } else if (reply) {
+        decision = { ...decision, reply };
+      }
+    } catch {
+      if (!decision) {
+        decision = {
+          reply: supportText(language),
+          intent: "support",
+          needsHuman: true,
+          useModel: false,
+          packId: null,
+          orderAction: null,
+          media: [],
+        };
+      } else if (!decision.reply) {
+        decision = { ...decision, reply: supportText(language) };
+      }
+    }
+  }
+
+  if (!decision) {
+    decision = {
+      reply: supportText(language),
+      intent: "support",
+      needsHuman: true,
+      useModel: false,
+      packId: null,
+      orderAction: null,
+      media: [],
+    };
+  }
+  if (!decision.reply) decision = { ...decision, reply: supportText(language) };
 
   if (decision.orderAction === "quote" && decision.packId) {
     const pack = packById(decision.packId);
     if (pack) {
-      const order = await store.createOrder({
+      await store.createOrder({
         reference: orderReference(),
         subscriberId: incoming.subscriberId,
         packId: pack.id,
@@ -67,29 +120,11 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
         fileNames: [],
         downloadToken: null,
       });
-      if (config.paymentsEnabled) {
-        decision = { ...decision, reply: paymentInstructions(order, ctx) };
-      }
     }
   }
 
-  if (decision.orderAction === "fulfill" && openOrder) {
-    const released = await releaseOrderFiles(store, openOrder);
-    if ("media" in released && released.media.length > 0) {
-      decision = {
-        ...decision,
-        reply: filesReadyText(language),
-        media: released.media,
-        needsHuman: false,
-      };
-    } else {
-      decision = {
-        ...decision,
-        reply: filesUnavailableText(language),
-        needsHuman: true,
-        orderAction: null,
-      };
-    }
+  if (media.length > 0) {
+    decision = { ...decision, media, needsHuman: false };
   }
 
   if (decision.orderAction === "claim_payment" && openOrder) {

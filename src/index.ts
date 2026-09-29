@@ -6,7 +6,7 @@ import { handleIncoming } from "./handleIncoming.js";
 import { resolveMediaFile } from "./library.js";
 import { dynamicBlock, parseIncoming } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
-import { filesReadyText, resolveReplyLanguage, supportText } from "./sales.js";
+import { resolveReplyLanguage, supportText } from "./sales.js";
 import type { Store } from "./store.js";
 
 const missing = missingProductionSecrets();
@@ -111,7 +111,7 @@ app.post("/admin/orders/:id/verify", async (req, res) => {
     res.status(released.status).json({ error: released.error });
     return;
   }
-  const text = filesReadyText();
+  const text = "Order verified.";
   res.json({
     order: released.order,
     messages: [{ type: "text", text }, ...released.media],

@@ -35,6 +35,7 @@ test("the outgoing request caches only the stable system prompt", () => {
 
   assert.equal(request.body.model, process.env.OPENROUTER_MODEL ?? "x-ai/grok-4.7");
   assert.equal(request.body.max_tokens, 400);
+  assert.equal(request.body.temperature, 0.8);
   assert.equal(request.body.session_id, sessionId);
   assert.equal(request.headers["x-session-id"], sessionId);
   assert.equal(request.headers["x-grok-conv-id"], sessionId);
@@ -60,10 +61,22 @@ test("the outgoing request caches only the stable system prompt", () => {
   assert.equal(JSON.stringify(rest).includes("cache_control"), false);
   assert.equal(JSON.stringify(language).includes("cache_control"), false);
 
+  const situation = "They brought up One photo at $15. Mention the price only if this message calls for it.";
+  const withSituation = buildOpenRouterChatRequest(ctx, history, userText, situation);
+  const cachedNote = withSituation.body.messages[0];
+  assert.ok(Array.isArray(cachedNote?.content));
+  assert.equal(cachedNote.content[0]?.text, systemPrompt(ctx));
+  assert.doesNotMatch(cachedNote.content[0]?.text ?? "", /One photo at \$15/);
+  assert.equal(withSituation.body.messages.at(-1)?.content, userText);
+  assert.equal(JSON.stringify(withSituation.body.messages.at(-1)).includes("cache_control"), false);
+  const situationMessage = withSituation.body.messages.find((message) => message.content === situation);
+  assert.ok(situationMessage);
+  assert.equal(JSON.stringify(situationMessage).includes("cache_control"), false);
+
   const spanish = buildOpenRouterChatRequest({ ...ctx, language: "es" }, history, "quiero una foto");
   const spanishCached = spanish.body.messages[0];
   assert.ok(Array.isArray(spanishCached?.content));
   assert.equal(spanishCached.content[0]?.text, systemPrompt(ctx));
-  assert.equal(spanish.body.messages[1]?.content, "This turn is Spanish. Reply in casual Spanish only.");
+  assert.equal(spanish.body.messages[1]?.content, turnInstruction({ ...ctx, language: "es" }));
   assert.equal(spanish.body.messages.at(-1)?.content, "quiero una foto");
 });

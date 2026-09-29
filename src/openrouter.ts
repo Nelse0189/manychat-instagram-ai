@@ -34,6 +34,7 @@ export function buildOpenRouterChatRequest(
   ctx: SalesContext,
   history: ChatMessage[],
   userText: string,
+  situation = "",
 ): OpenRouterChatRequest {
   const sessionId = cacheSessionId(ctx.shopHandle);
   const messages: ChatRequestMessage[] = [
@@ -48,12 +49,17 @@ export function buildOpenRouterChatRequest(
       ],
     },
     { role: "system", content: turnInstruction(ctx) },
+  ];
+  if (situation.trim()) {
+    messages.push({ role: "system", content: situation.trim() });
+  }
+  messages.push(
     ...history.slice(-12).map((message) => ({
       role: message.role,
       content: message.text,
     })),
     { role: "user", content: userText },
-  ];
+  );
 
   return {
     url: "https://openrouter.ai/api/v1/chat/completions",
@@ -66,7 +72,7 @@ export function buildOpenRouterChatRequest(
     },
     body: {
       model: config.openRouterModel,
-      temperature: 0.2,
+      temperature: 0.8,
       max_tokens: 400,
       session_id: sessionId,
       messages,
@@ -74,16 +80,31 @@ export function buildOpenRouterChatRequest(
   };
 }
 
+type ReplyGenerator = (
+  ctx: SalesContext,
+  history: ChatMessage[],
+  userText: string,
+  situation: string,
+) => Promise<string>;
+
+let replyGenerator: ReplyGenerator | null = null;
+
+export function setReplyGenerator(generator: ReplyGenerator | null): void {
+  replyGenerator = generator;
+}
+
 export async function completeReply(
   ctx: SalesContext,
   history: ChatMessage[],
   userText: string,
+  situation = "",
 ): Promise<string> {
+  if (replyGenerator) return replyGenerator(ctx, history, userText, situation);
   if (!config.openRouterApiKey) {
     throw new Error("OPENROUTER_API_KEY is not set.");
   }
 
-  const request = buildOpenRouterChatRequest(ctx, history, userText);
+  const request = buildOpenRouterChatRequest(ctx, history, userText, situation);
   const response = await fetch(request.url, {
     method: "POST",
     headers: {
