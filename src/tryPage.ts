@@ -9,16 +9,16 @@ export function tryPageHtml(model: string): string {
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      min-height: 100vh;
       background: #111;
       color: #f4f4f5;
       font: 16px/1.4 ui-sans-serif, system-ui, sans-serif;
     }
     main {
       max-width: 440px;
-      min-height: 100vh;
+      height: 100dvh;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -59,6 +59,8 @@ export function tryPageHtml(model: string): string {
       margin: 0;
       padding: 16px;
       flex: 1;
+      min-height: 0;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -77,7 +79,7 @@ export function tryPageHtml(model: string): string {
     form {
       display: flex;
       gap: 8px;
-      padding: 12px 16px 16px;
+      padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
       border-top: 1px solid #2a2a2e;
       align-items: flex-end;
     }
@@ -89,7 +91,7 @@ export function tryPageHtml(model: string): string {
   <main>
     <header>
       <div>
-        <h1>Try the voice</h1>
+        <h1>Shop chat</h1>
         <p id="model-line"></p>
       </div>
       <button type="button" id="reset">New chat</button>
@@ -99,7 +101,7 @@ export function tryPageHtml(model: string): string {
         <input id="secret" type="password" autocomplete="current-password">
       </label>
     </div>
-    <ol id="log"><li id="empty">Send a message. The reply shows up here as soon as it is written.</li></ol>
+    <ol id="log"><li id="empty">Message the same shop agent Instagram uses. Replies stay in this chat.</li></ol>
     <p id="status"></p>
     <form id="composer">
       <textarea id="text" rows="2" maxlength="1000" placeholder="Say hey"></textarea>
@@ -116,7 +118,7 @@ export function tryPageHtml(model: string): string {
     const secretRow = document.getElementById("secret-row");
     const secret = document.getElementById("secret");
     document.getElementById("model-line").textContent =
-      "Replies immediately with " + boot.model + ". Nothing is sent to Instagram.";
+      "Same agent as ManyChat. Replies here, not on Instagram.";
     secret.value = sessionStorage.getItem("try-admin-secret") || "";
 
     function sessionId() {
@@ -144,7 +146,7 @@ export function tryPageHtml(model: string): string {
       log.replaceChildren();
       const empty = document.createElement("li");
       empty.id = "empty";
-      empty.textContent = "Send a message. The reply shows up here as soon as it is written.";
+      empty.textContent = "Message the same shop agent Instagram uses. Replies stay in this chat.";
       log.append(empty);
       status.textContent = "";
       text.focus();
