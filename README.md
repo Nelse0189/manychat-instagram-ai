@@ -30,7 +30,7 @@ Instagram still has to be connected in ManyChat before those automations can run
 
 `GET /health` shows which integrations are configured. Without Firebase, data is kept in memory only.
 
-Open `http://localhost:8787/try` to text the shop voice and get the reply immediately. That page does not message Instagram and does not wait out the live-DM delay. If `ADMIN_SECRET` is set, paste it into the page when it asks.
+Open `http://localhost:8787/try` to text the shop voice and get the reply immediately. That page does not message Instagram and does not wait out the live-DM delay. If `ADMIN_SECRET` is set, paste it into the page when it asks. The hosted page is `https://arial-luxe-shop.web.app/try`.
 
 ```bash
 curl -s http://localhost:8787/health

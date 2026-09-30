@@ -54,7 +54,7 @@ app.get("/health", (_req, res) => {
   });
 });
 
-mountTryPage(app, adminAllowed, tryPageHtml);
+mountTryPage(app, (header) => config.tryPagePublic || adminAllowed(header), tryPageHtml);
 
 app.post("/manychat/dynamic", async (req, res) => {
   if (!webhookAllowed(req.header("x-webhook-secret") ?? req.header("authorization"))) {

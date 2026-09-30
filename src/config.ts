@@ -14,6 +14,7 @@ export const config = {
   adminSecret: process.env.ADMIN_SECRET ?? "",
   openRouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
   openRouterModel: process.env.OPENROUTER_MODEL ?? "openai/gpt-6.1-sol",
+  tryPagePublic: flag("TRY_PAGE_PUBLIC", false),
   manychatApiToken: process.env.MANYCHAT_API_TOKEN ?? "",
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "",
   firebaseDatabaseId: process.env.FIREBASE_DATABASE_ID ?? "shop",
