@@ -566,7 +566,7 @@ export function modelSituation(
     notes.push("They already said stop. Do not sell. Keep it to a short goodbye.");
   }
   if (CATALOG.test(folded) || PHOTOS.test(folded) || VIDEOS.test(folded)) {
-    notes.push("They asked what you sell or what it costs. Say the selfie and video prices in a normal text. Do not copy a list.");
+    notes.push("They asked what you sell or what it costs. Say the prices and how to pay, in a normal text. Do not ask what vibe or what kind.");
   }
   const asked = askKey(trimmed);
   if (AGE_ASKS.has(asked)) {
@@ -591,7 +591,7 @@ export function modelSituation(
     const pack = packById(packId);
     if (pack) {
       notes.push(
-        `They brought up ${pack.name} at $${pack.priceUsd}. Mention the price, Venmo, or Cash App only if this message calls for it.`,
+        `They brought up ${pack.name} at $${pack.priceUsd}. Say that price and how to pay. Do not ask what vibe or what kind.`,
       );
     }
   }
@@ -602,7 +602,7 @@ export function systemPrompt(ctx: SalesContext): string {
   const venmo = ctx.venmoHandle.replace(/^@/, "");
   const cash = ctx.cashAppTag.replace(/^\$/, "");
   const checkout = ctx.paymentsEnabled
-    ? `Non-nude selfies $15, $40, $60. TikTok-style videos $25, $60, $90. Venmo @${venmo}. Cash App $${cash}. It does not have to be a formal quote. Do not paste them into every reply.`
+    ? `Non-nude selfies $15, $40, $60. TikTok-style videos $25, $60, $90. Venmo @${venmo}. Cash App $${cash}. It does not have to be a formal quote. Do not paste them into every reply. If they want pics, selfies, or videos, say the price and how to pay in that same text. Do not ask what vibe or what kind.`
     : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles.";
   return [
     `Sound like a real person texting: short, casual, first person. The goal is to get them to pay. You are semi-interested, not eager and not a salesperson. Do not reuse a template.`,

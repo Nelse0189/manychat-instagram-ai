@@ -275,6 +275,8 @@ test("model instructions ask for a screenshot and do not default to Spanish", ()
   assert.match(prompt, /real person texting/);
   assert.match(prompt, /Do not reuse a template/);
   assert.match(prompt, /Do not paste them into every reply/);
+  assert.match(prompt, /say the price and how to pay/);
+  assert.match(prompt, /Do not ask what vibe or what kind/);
   assert.doesNotMatch(prompt, /Sound like these lines/);
   assert.doesNotMatch(prompt, /This turn is English|This turn is Spanish/);
   assert.equal(
@@ -326,7 +328,8 @@ test("an open quote is left for the model and still names the pack price as a fa
     filesFailed: false,
   });
   assert.match(note, /One photo at \$15/);
-  assert.match(note, /only if this message calls for it/);
+  assert.match(note, /Say that price and how to pay/);
+  assert.match(note, /Do not ask what vibe/);
   assert.doesNotMatch(note, /AL-|in the note/);
 });
 
