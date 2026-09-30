@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildOpenRouterChatRequest, cacheSessionId } from "./openrouter.js";
+import { buildOpenRouterChatRequest, cacheSessionId, maxTokensFor, reasoningFor } from "./openrouter.js";
 import { systemPrompt, turnInstruction, type SalesContext } from "./sales.js";
 import type { ChatMessage } from "./types.js";
 
@@ -15,13 +15,15 @@ const ctx: SalesContext = {
   language: "en",
 };
 
-test("the code default model is OpenAI GPT-6.1 Sol", () => {
+test("the code default model is Grok 4.20 with reasoning off", () => {
   const source = readFileSync(new URL("./config.ts", import.meta.url), "utf8");
   const example = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
-  assert.match(source, /OPENROUTER_MODEL \?\? "openai\/gpt-6\.1-sol"/);
-  assert.match(example, /^OPENROUTER_MODEL=openai\/gpt-6\.1-sol$/m);
-  assert.doesNotMatch(source, /anthropic\/|x-ai\/grok/i);
-  assert.doesNotMatch(example, /anthropic\/|x-ai\/grok/i);
+  assert.match(source, /OPENROUTER_MODEL \?\? "x-ai\/grok-4\.20"/);
+  assert.match(example, /^OPENROUTER_MODEL=x-ai\/grok-4\.20$/m);
+  assert.deepEqual(reasoningFor("x-ai/grok-4.20"), { enabled: false });
+  assert.equal(maxTokensFor("x-ai/grok-4.20"), 160);
+  assert.deepEqual(reasoningFor("openai/gpt-6.1-sol"), { effort: "low" });
+  assert.equal(maxTokensFor("openai/gpt-6.1-sol"), 60);
 });
 
 test("the outgoing request caches only the stable system prompt", () => {
@@ -33,9 +35,10 @@ test("the outgoing request caches only the stable system prompt", () => {
   const request = buildOpenRouterChatRequest(ctx, history, userText);
   const sessionId = cacheSessionId(ctx.shopHandle);
 
-  assert.equal(request.body.model, process.env.OPENROUTER_MODEL ?? "openai/gpt-6.1-sol");
-  assert.equal(request.body.max_tokens, 60);
-  assert.deepEqual(request.body.reasoning, { effort: "low" });
+  const model = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4.20";
+  assert.equal(request.body.model, model);
+  assert.equal(request.body.max_tokens, maxTokensFor(model));
+  assert.deepEqual(request.body.reasoning, reasoningFor(model));
   assert.equal(request.body.temperature, 0.8);
   assert.equal(request.body.session_id, sessionId);
   assert.equal(request.headers["x-session-id"], sessionId);

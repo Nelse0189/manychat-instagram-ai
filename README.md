@@ -7,7 +7,7 @@ Customers buy a photo or video pack from `media/hernandez_sari_`. Payment goes t
 ## When you have the keys
 
 1. Copy `.env.example` to `.env`.
-2. OpenRouter: create a key at https://openrouter.ai/keys and set `OPENROUTER_API_KEY`. The default model is `openai/gpt-6.1-sol`.
+2. OpenRouter: create a key at https://openrouter.ai/keys and set `OPENROUTER_API_KEY`. The default model is `x-ai/grok-4.20`.
 3. ManyChat: Settings → API → copy the token into `MANYCHAT_API_TOKEN`. Generate a long random `WEBHOOK_SECRET` and `ADMIN_SECRET`.
 4. Firebase project `arial-luxe-shop` is already created. Firestore Enterprise database `shop` is in `nam5` (United States multi-region). `.env` should contain `FIREBASE_PROJECT_ID`, `FIREBASE_DATABASE_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`.
 5. `npm install`

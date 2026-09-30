@@ -13,6 +13,8 @@ type ChatRequestMessage = {
   content: string | TextPart[];
 };
 
+export type OpenRouterReasoning = { effort: "low" } | { enabled: false };
+
 export type OpenRouterChatRequest = {
   url: string;
   headers: Record<string, string>;
@@ -21,10 +23,23 @@ export type OpenRouterChatRequest = {
     temperature: number;
     max_tokens: number;
     session_id: string;
-    reasoning: { effort: "low" };
+    reasoning: OpenRouterReasoning;
     messages: ChatRequestMessage[];
   };
 };
+
+const GROK_420 = "x-ai/grok-4.20";
+
+export function reasoningFor(model: string): OpenRouterReasoning {
+  // Grok 4.20 treats reasoning as optional and off by default. Leaving it
+  // off keeps a short shop text inside max_tokens. GPT models reject "none".
+  if (model === GROK_420) return { enabled: false };
+  return { effort: "low" };
+}
+
+export function maxTokensFor(model: string): number {
+  return model === GROK_420 ? 160 : 60;
+}
 
 const PROMPT_CHAR_BUDGET = 1450;
 
@@ -96,10 +111,8 @@ export function buildOpenRouterChatRequest(
     body: {
       model: config.openRouterModel,
       temperature: 0.8,
-      // GPT-6.1 Sol rejects a minimal reasoning effort. This account can
-      // pre-authorize at most 79 completion tokens.
-      max_tokens: 60,
-      reasoning: { effort: "low" },
+      max_tokens: maxTokensFor(config.openRouterModel),
+      reasoning: reasoningFor(config.openRouterModel),
       session_id: sessionId,
       messages: fitted,
     },

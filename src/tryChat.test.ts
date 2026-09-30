@@ -51,7 +51,7 @@ test("the try page names the model and answers without waiting", async (t) => {
 
   const page = await fetch(`${running.url}/try`);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /openai\/gpt-6\.1-sol/);
+  assert.match(await page.text(), /x-ai\/grok-4\.20/);
 
   const denied = await fetch(`${running.url}/try/message`, {
     method: "POST",
@@ -71,7 +71,7 @@ test("the try page names the model and answers without waiting", async (t) => {
   assert.equal(catalog.status, 200);
   const catalogBody = (await catalog.json()) as { reply: string; model: string };
   assert.match(catalogBody.reply, /\$15/);
-  assert.equal(catalogBody.model, "openai/gpt-6.1-sol");
+  assert.equal(catalogBody.model, "x-ai/grok-4.20");
   assert.equal(seen.length, 0);
 
   const first = await fetch(`${running.url}/try/message`, {
