@@ -275,7 +275,14 @@ export async function composeDeferredReply(store: Store, subscriberId: string): 
   const language = resolveReplyLanguage(userText, all);
   const filesReady = pending?.filesReady === true;
   const filesFailed = pending?.filesFailed === true && !filesReady;
-  const burst = history.some((message) => message.role === "user");
+  let burstStart = 0;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    if (history[index]?.role === "assistant") {
+      burstStart = index + 1;
+      break;
+    }
+  }
+  const burst = history.slice(burstStart).some((message) => message.role === "user");
   const promptOrder =
     openOrder ??
     (filesReady && pending?.releasedPackName

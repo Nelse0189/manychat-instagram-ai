@@ -125,11 +125,16 @@ test("messages before the first reply fold into the same task", async () => {
   assert.equal(await store.hasAssistantReply("sub-1"), true);
 });
 
-test("a follow-up after the first reply returns immediately", async () => {
+test("a follow-up after the first reply waits 0 to 3 minutes and does not sleep", async () => {
   const store = createMemoryStore();
   const scheduler = schedulerSpy();
-  setReplyGenerator(async (_ctx, _history, userText) => {
-    return JSON.stringify({ reply: `model saw: ${userText}`, intent: "other" });
+  let modelCalls = 0;
+  setReplyGenerator(async (_ctx, history, userText) => {
+    modelCalls += 1;
+    return JSON.stringify({
+      reply: `folded ${history.filter((message) => message.role === "user").map((message) => message.text).join("|")} :: ${userText}`,
+      intent: "other",
+    });
   });
   await acceptShopMessage({
     store,
@@ -137,35 +142,63 @@ test("a follow-up after the first reply returns immediately", async () => {
     incoming: incoming("hey"),
     now: NOW,
     random: () => 0,
-    pause: async () => undefined,
+    pause: async () => {
+      throw new Error("webhook must not pause");
+    },
   });
   await deliverScheduledReply({
     store,
     subscriberId: "sub-1",
     send: async () => undefined,
   });
+  assert.equal(await store.hasAssistantReply("sub-1"), true);
 
-  const pauses: number[] = [];
+  const followUpAt = Date.now() + 1_000;
   const started = Date.now();
   const followUp = await acceptShopMessage({
     store,
     scheduler,
     incoming: incoming("what are you doing"),
-    now: NOW + 11 * 60 * 1000,
-    random: () => {
-      throw new Error("an answered conversation must not roll a 0-10 minute delay");
-    },
-    pause: async (ms) => {
-      pauses.push(ms);
+    now: followUpAt,
+    random: () => 0.5,
+    pause: async () => {
+      throw new Error("webhook must not pause");
     },
   });
+  const dueAt = new Date(followUpAt + 90 * 1000).toISOString();
   assert.ok(Date.now() - started < 1000);
-  assert.equal(scheduler.calls.length, 1);
-  assert.equal(pauses.length, 1);
-  assert.ok((pauses[0] ?? 0) <= 4_000);
-  assert.equal(responseHasCustomerText(followUp.body), true);
-  const messages = (followUp.body.content as { messages: Array<{ text?: string }> }).messages;
-  assert.equal(messages[0]?.text, "model saw: what are you doing");
+  assert.equal(responseHasCustomerText(followUp.body), false);
+  assert.equal(scheduler.calls.length, 2);
+  assert.equal(scheduler.calls[1]?.dueAt, dueAt);
+  assert.equal((await store.getPendingReply("sub-1"))?.dueAt, dueAt);
+  assert.equal(modelCalls, 1);
+
+  await acceptShopMessage({
+    store,
+    scheduler,
+    incoming: incoming("you around?"),
+    now: followUpAt + 5_000,
+    random: () => {
+      throw new Error("a later message must not roll a new delay");
+    },
+    pause: async () => {
+      throw new Error("webhook must not pause");
+    },
+  });
+  assert.equal(scheduler.calls.length, 2);
+  assert.equal((await store.getPendingReply("sub-1"))?.dueAt, dueAt);
+
+  const sent: Decision[] = [];
+  const outcome = await deliverScheduledReply({
+    store,
+    subscriberId: "sub-1",
+    send: async (_id, decision) => {
+      sent.push(decision);
+    },
+  });
+  assert.equal(outcome, "sent");
+  assert.equal(sent[0]?.reply, "folded hey|what are you doing :: you around?");
+  assert.equal(await store.getPendingReply("sub-1"), null);
 });
 
 test("saying they paid does not attach files, and a payment screen does", async () => {
