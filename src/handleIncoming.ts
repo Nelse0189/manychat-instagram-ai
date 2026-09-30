@@ -11,7 +11,6 @@ import {
   decisionFromModel,
   modelSituation,
   resolveReplyLanguage,
-  supportText,
   textShowsPaymentScreenshot,
   type ReplyLanguage,
   type SalesContext,
@@ -146,6 +145,7 @@ export async function composeCustomerReply(input: {
   paymentScreenshot: boolean;
   quoted: boolean;
   claimed: boolean;
+  surfaceModelErrors?: boolean;
 }): Promise<Decision> {
   let decision = input.decision;
   const situation = modelSituation(input.userText, input.ctx, {
@@ -159,44 +159,19 @@ export async function composeCustomerReply(input: {
       : situation;
 
   if (!decision || decision.useModel) {
-    try {
-      const raw = await completeReply(input.ctx, input.history, input.userText, situationText);
-      const reply = customerReplyText(raw);
-      if (!decision) {
-        decision = decisionFromModel(raw, input.ctx);
-        decision = { ...decision, reply: reply || decision.reply };
-      } else if (reply) {
-        decision = { ...decision, reply };
-      }
-    } catch {
-      if (!decision) {
-        decision = {
-          reply: supportText(input.language),
-          intent: "support",
-          needsHuman: true,
-          useModel: false,
-          packId: null,
-          orderAction: null,
-          media: [],
-        };
-      } else if (!decision.reply) {
-        decision = { ...decision, reply: supportText(input.language) };
-      }
+    const raw = await completeReply(input.ctx, input.history, input.userText, situationText);
+    const reply = customerReplyText(raw);
+    if (!decision) {
+      decision = decisionFromModel(raw, input.ctx);
+      decision = { ...decision, reply: reply || decision.reply };
+    } else if (reply) {
+      decision = { ...decision, reply };
     }
   }
 
-  if (!decision) {
-    decision = {
-      reply: supportText(input.language),
-      intent: "support",
-      needsHuman: true,
-      useModel: false,
-      packId: null,
-      orderAction: null,
-      media: [],
-    };
+  if (!decision || (!decision.reply && input.media.length === 0)) {
+    throw new Error("The model did not answer.");
   }
-  if (!decision.reply) decision = { ...decision, reply: supportText(input.language) };
 
   if (decision.orderAction === "quote" && decision.packId && !input.quoted) {
     const pack = packById(decision.packId);
@@ -233,7 +208,11 @@ export async function composeCustomerReply(input: {
   return decision;
 }
 
-export async function handleIncoming(store: Store, incoming: IncomingMessage): Promise<Decision> {
+export async function handleIncoming(
+  store: Store,
+  incoming: IncomingMessage,
+  options?: { surfaceModelErrors?: boolean },
+): Promise<Decision> {
   const recorded = await recordIncoming(store, incoming);
   const decision = await composeCustomerReply({
     store,
@@ -249,6 +228,7 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
     paymentScreenshot: recorded.paymentScreenshot,
     quoted: recorded.quoted,
     claimed: recorded.claimed,
+    surfaceModelErrors: options?.surfaceModelErrors,
   });
   await store.addMessage(incoming.subscriberId, {
     role: "assistant",

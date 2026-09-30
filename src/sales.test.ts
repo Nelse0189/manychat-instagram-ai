@@ -31,31 +31,27 @@ const ctx: SalesContext = {
   openOrder: null,
 };
 
-test("catalog reply uses the draft prices and does not mention payment handles", () => {
-  const decision = decideDeterministic("CATALOG", ctx);
-  assert.ok(decision);
-  assert.match(decision.reply, /photos: one \$15/);
-  assert.match(decision.reply, /\$40/);
-  assert.match(decision.reply, /\$60/);
-  assert.match(decision.reply, /I'm not charging yet/);
-  assert.doesNotMatch(decision.reply, /automated|collection|Reply ONE/i);
-  assert.doesNotMatch(decision.reply, /venmo|cash app|fotos:|dime cuál/i);
+test("price and catalog words go to the model with no saved line", () => {
+  for (const text of ["catalog", "menu", "price", "prices", "photo", "photos", "video", "videos"]) {
+    const decision = decideDeterministic(text, ctx);
+    assert.equal(decision?.useModel, true, text);
+    assert.equal(decision?.reply, "", text);
+  }
 });
 
-test("stop opts the contact out in English", () => {
+test("stop opts the contact out and leaves the goodbye to the model", () => {
   const decision = decideDeterministic("STOP", ctx);
   assert.equal(decision?.intent, "opt_out");
-  assert.match(decision!.reply, /won't text you again/i);
-  assert.doesNotMatch(decision!.reply, /no te mando/);
+  assert.equal(decision?.useModel, true);
+  assert.equal(decision?.reply, "");
 });
 
 test("a pack quote stays closed while payments are disabled", () => {
   const decision = decideDeterministic("three photos", ctx);
   assert.equal(decision?.packId, "photo_3");
   assert.equal(decision?.orderAction, "quote");
-  assert.match(decision!.reply, /three photos \$40/);
-  assert.match(decision!.reply, /I'm not charging yet/);
-  assert.doesNotMatch(decision!.reply, /bluejays0137|Arialarias|todavía|tres fotos/);
+  assert.equal(decision?.useModel, true);
+  assert.equal(decision?.reply, "");
 });
 
 test("unrelated numbers do not select a pack", () => {
@@ -257,6 +253,11 @@ test("a screenshot sends a video as a video message", async () => {
 test("model instructions ask for a screenshot and do not default to Spanish", () => {
   const prompt = systemPrompt({ ...ctx, paymentsEnabled: true, cashAppTag: "Arialluxe" });
   assert.match(prompt, /ask for a screenshot/i);
+  assert.match(prompt, /The goal is to get them to pay/);
+  assert.match(prompt, /non-nude selfies/);
+  assert.match(prompt, /TikTok-style videos/);
+  assert.match(prompt, /Never call them packs/);
+  assert.match(prompt, /The reply must not say pack/);
   assert.match(prompt, /semi-interested, not eager and not a salesperson/);
   assert.match(prompt, /Do not obsess over breast size/);
   assert.match(prompt, /Do not bring up 30k or your chest unless they asked/);
@@ -274,6 +275,8 @@ test("model instructions ask for a screenshot and do not default to Spanish", ()
   assert.match(prompt, /real person texting/);
   assert.match(prompt, /Do not reuse a template/);
   assert.match(prompt, /Do not paste them into every reply/);
+  assert.match(prompt, /say the price and how to pay/);
+  assert.match(prompt, /Do not ask what vibe or what kind/);
   assert.doesNotMatch(prompt, /Sound like these lines/);
   assert.doesNotMatch(prompt, /This turn is English|This turn is Spanish/);
   assert.equal(
@@ -325,7 +328,8 @@ test("an open quote is left for the model and still names the pack price as a fa
     filesFailed: false,
   });
   assert.match(note, /One photo at \$15/);
-  assert.match(note, /only if this message calls for it/);
+  assert.match(note, /Say that price and how to pay/);
+  assert.match(note, /Do not ask what vibe/);
   assert.doesNotMatch(note, /AL-|in the note/);
 });
 
@@ -472,12 +476,13 @@ test("a digit after a Spanish DM is quoted in Spanish", async () => {
   assert.doesNotMatch(decision.reply, /send me the screenshot/);
 });
 
-test("model scripted lines use the conversation language", () => {
+test("the model reply is kept in the conversation language", () => {
   const spanish = decisionFromModel(
     '{"reply":"ok","intent":"opt_out","packId":null,"needsHuman":false}',
     { ...payCtx, language: "es" },
   );
-  assert.match(spanish.reply, /ya no te escribo/);
+  assert.equal(spanish.reply, "ok");
+  assert.equal(spanish.intent, "opt_out");
 
   const english = decisionFromModel(
     '{"reply":"ya pagué","intent":"payment_claim","packId":null,"needsHuman":false}',

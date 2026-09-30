@@ -7,7 +7,7 @@ Customers buy a photo or video pack from `media/hernandez_sari_`. Payment goes t
 ## When you have the keys
 
 1. Copy `.env.example` to `.env`.
-2. OpenRouter: create a key at https://openrouter.ai/keys and set `OPENROUTER_API_KEY`.
+2. OpenRouter: create a key at https://openrouter.ai/keys and set `OPENROUTER_API_KEY`. The default model is `x-ai/grok-4.20`.
 3. ManyChat: Settings → API → copy the token into `MANYCHAT_API_TOKEN`. Generate a long random `WEBHOOK_SECRET` and `ADMIN_SECRET`.
 4. Firebase project `arial-luxe-shop` is already created. Firestore Enterprise database `shop` is in `nam5` (United States multi-region). `.env` should contain `FIREBASE_PROJECT_ID`, `FIREBASE_DATABASE_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`.
 5. `npm install`
@@ -29,6 +29,8 @@ Instagram still has to be connected in ManyChat before those automations can run
 ## Check it locally before the keys
 
 `GET /health` shows which integrations are configured. Without Firebase, data is kept in memory only.
+
+Open `http://localhost:8787/try` to text the shop voice and get the reply immediately. That page does not message Instagram and does not wait out the live-DM delay. If `ADMIN_SECRET` is set, paste it into the page when it asks. The hosted page is `https://arial-luxe-shop.web.app/try`.
 
 ```bash
 curl -s http://localhost:8787/health

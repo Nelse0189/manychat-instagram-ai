@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildOpenRouterChatRequest, cacheSessionId } from "./openrouter.js";
+import { buildOpenRouterChatRequest, cacheSessionId, maxTokensFor, reasoningFor, tokenUsageFromPayload } from "./openrouter.js";
 import { systemPrompt, turnInstruction, type SalesContext } from "./sales.js";
 import type { ChatMessage } from "./types.js";
 
@@ -15,13 +15,26 @@ const ctx: SalesContext = {
   language: "en",
 };
 
-test("the code default model is OpenAI GPT-5", () => {
+test("the code default model is Grok 4.20 with reasoning off", () => {
   const source = readFileSync(new URL("./config.ts", import.meta.url), "utf8");
   const example = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
-  assert.match(source, /OPENROUTER_MODEL \?\? "openai\/gpt-5"/);
-  assert.match(example, /^OPENROUTER_MODEL=openai\/gpt-5$/m);
-  assert.doesNotMatch(source, /anthropic\/|x-ai\/grok/i);
-  assert.doesNotMatch(example, /anthropic\/|x-ai\/grok/i);
+  assert.match(source, /OPENROUTER_MODEL \?\? "x-ai\/grok-4\.20"/);
+  assert.match(example, /^OPENROUTER_MODEL=x-ai\/grok-4\.20$/m);
+  assert.deepEqual(reasoningFor("x-ai/grok-4.20"), { enabled: false });
+  assert.equal(maxTokensFor("x-ai/grok-4.20"), 160);
+  assert.deepEqual(reasoningFor("openai/gpt-6.1-sol"), { effort: "low" });
+  assert.equal(maxTokensFor("openai/gpt-6.1-sol"), 60);
+});
+
+test("provider usage becomes the demo token counts", () => {
+  assert.deepEqual(
+    tokenUsageFromPayload({
+      usage: { prompt_tokens: 412, completion_tokens: 38, total_tokens: 450, cost: 0.00061 },
+    }),
+    { promptTokens: 412, completionTokens: 38, totalTokens: 450, costUsd: 0.00061 },
+  );
+  assert.equal(tokenUsageFromPayload({ choices: [] }), null);
+  assert.equal(tokenUsageFromPayload({ usage: { prompt_tokens: 1 } }), null);
 });
 
 test("the outgoing request caches only the stable system prompt", () => {
@@ -33,9 +46,10 @@ test("the outgoing request caches only the stable system prompt", () => {
   const request = buildOpenRouterChatRequest(ctx, history, userText);
   const sessionId = cacheSessionId(ctx.shopHandle);
 
-  assert.equal(request.body.model, process.env.OPENROUTER_MODEL ?? "openai/gpt-5");
-  assert.equal(request.body.max_tokens, 100);
-  assert.deepEqual(request.body.reasoning, { effort: "minimal" });
+  const model = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4.20";
+  assert.equal(request.body.model, model);
+  assert.equal(request.body.max_tokens, maxTokensFor(model));
+  assert.deepEqual(request.body.reasoning, reasoningFor(model));
   assert.equal(request.body.temperature, 0.8);
   assert.equal(request.body.session_id, sessionId);
   assert.equal(request.headers["x-session-id"], sessionId);
@@ -55,6 +69,19 @@ test("the outgoing request caches only the stable system prompt", () => {
   assert.equal(language?.role, "system");
   assert.equal(language?.content, turnInstruction(ctx));
   assert.equal(typeof language?.content, "string");
+
+  const withHistory = buildOpenRouterChatRequest(
+    ctx,
+    [
+      { role: "user", text: "Can I get pics", createdAt: "" },
+      { role: "assistant", text: "selfies are $15. venmo or cash app", createdAt: "" },
+      { role: "user", text: "Selfies maybe", createdAt: "" },
+      { role: "assistant", text: "send it on venmo", createdAt: "" },
+    ],
+    "Any that you got",
+  );
+  assert.match(JSON.stringify(withHistory.body.messages), /Can I get pics/);
+  assert.equal(withHistory.body.messages.at(-1)?.content, "Any that you got");
 
   const last = rest.at(-1);
   assert.equal(last?.role, "user");

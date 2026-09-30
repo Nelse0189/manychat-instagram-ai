@@ -3,11 +3,14 @@ import { config, firebaseConfigured, missingProductionSecrets } from "./config.j
 import { createFirestoreStore } from "./firestoreStore.js";
 import { releaseOrderFiles } from "./fulfill.js";
 import { resolveMediaFile } from "./library.js";
+import { mountLibraryPage } from "./libraryPage.js";
 import { createCloudTasksReplyScheduler } from "./cloudTasks.js";
 import { parseIncoming, sendManychatContent } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
 import { acceptShopMessage, deliverScheduledReply } from "./replyGate.js";
 import type { Store } from "./store.js";
+import { mountTryPage } from "./tryChat.js";
+import { tryPageHtml } from "./tryPage.js";
 
 const missing = missingProductionSecrets();
 if (missing.length > 0) {
@@ -46,10 +49,15 @@ app.get("/health", (_req, res) => {
     ok: true,
     firebase: firebaseConfigured(),
     openrouter: Boolean(config.openRouterApiKey),
+    model: config.openRouterModel,
     paymentsEnabled: config.paymentsEnabled,
     publicBaseUrl: Boolean(config.publicBaseUrl),
   });
 });
+
+const pageAllowed = (header: string | undefined) => config.tryPagePublic || adminAllowed(header);
+mountTryPage(app, pageAllowed, tryPageHtml);
+mountLibraryPage(app, pageAllowed);
 
 app.post("/manychat/dynamic", async (req, res) => {
   if (!webhookAllowed(req.header("x-webhook-secret") ?? req.header("authorization"))) {

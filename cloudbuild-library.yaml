@@ -1,0 +1,26 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    secretEnv: ["GITHUB_TOKEN"]
+    entrypoint: python3
+    args: ["scripts/pull_library.py"]
+  - name: gcr.io/cloud-builders/docker
+    args:
+      [
+        "build",
+        "-t",
+        "us-central1-docker.pkg.dev/arial-luxe-shop/shop/shop-try:${_TAG}",
+        ".",
+      ]
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "us-central1-docker.pkg.dev/arial-luxe-shop/shop/shop-try:${_TAG}"]
+timeout: 2400s
+options:
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+substitutions:
+  _TAG: library
+availableSecrets:
+  secretManager:
+    - versionName: projects/arial-luxe-shop/secrets/github-lfs-read/versions/latest
+      env: GITHUB_TOKEN
