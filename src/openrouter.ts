@@ -74,9 +74,9 @@ export function buildOpenRouterChatRequest(
     body: {
       model: config.openRouterModel,
       temperature: 0.8,
-      // GPT-6.1 Sol has no minimal reasoning effort. The cap stays under the
-      // OpenRouter key's remaining pre-authorization so a short DM can be sent.
-      max_tokens: 70,
+      // GPT-6.1 Sol rejects a minimal reasoning effort. Low effort and this cap
+      // keep a DM short enough for the key to pre-authorize.
+      max_tokens: 100,
       reasoning: { effort: "low" },
       session_id: sessionId,
       messages,
