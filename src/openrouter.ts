@@ -85,7 +85,7 @@ export function maxTokensFor(model: string): number {
   return model === GROK_420 ? 160 : 60;
 }
 
-const PROMPT_CHAR_BUDGET = 1450;
+const PROMPT_CHAR_BUDGET = 8000;
 
 function messageText(message: ChatRequestMessage): string {
   return typeof message.content === "string"

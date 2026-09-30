@@ -70,6 +70,19 @@ test("the outgoing request caches only the stable system prompt", () => {
   assert.equal(language?.content, turnInstruction(ctx));
   assert.equal(typeof language?.content, "string");
 
+  const withHistory = buildOpenRouterChatRequest(
+    ctx,
+    [
+      { role: "user", text: "Can I get pics", createdAt: "" },
+      { role: "assistant", text: "selfies are $15. venmo or cash app", createdAt: "" },
+      { role: "user", text: "Selfies maybe", createdAt: "" },
+      { role: "assistant", text: "send it on venmo", createdAt: "" },
+    ],
+    "Any that you got",
+  );
+  assert.match(JSON.stringify(withHistory.body.messages), /Can I get pics/);
+  assert.equal(withHistory.body.messages.at(-1)?.content, "Any that you got");
+
   const last = rest.at(-1);
   assert.equal(last?.role, "user");
   assert.equal(last?.content, userText);

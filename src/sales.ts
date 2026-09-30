@@ -17,6 +17,7 @@ const OPT_OUT = /^(stop|unsubscribe|opt[\s-]?out)$/i;
 const CATALOG = /^(catalog|menu|prices?|precio|precios|catalogo)$/i;
 const PHOTOS = /^(photos?|fotos?)$/i;
 const VIDEOS = /^(videos?)$/i;
+const ANY_CHOICE = /\b(any|whatever|whichever|either|both|idc|don't care|dont care|you pick|anything)\b/i;
 const SUPPORT = /^(support|human|agent)$/i;
 const PAID =
   /\b(i paid|i've paid|ive paid|payment sent|sent the (money|payment)|just paid|paid you|ya pague|te pague|ya te pague|ya lo pague|pague|ya mande el pago|ya envie el pago|pago enviado|hice el pago)\b/i;
@@ -565,8 +566,8 @@ export function modelSituation(
   if (ctx.optedOut) {
     notes.push("They already said stop. Do not sell. Keep it to a short goodbye.");
   }
-  if (CATALOG.test(folded) || PHOTOS.test(folded) || VIDEOS.test(folded)) {
-    notes.push("They asked what you sell or what it costs. Say the prices and how to pay, in a normal text. Do not ask what vibe or what kind.");
+  if (CATALOG.test(folded) || PHOTOS.test(folded) || VIDEOS.test(folded) || ANY_CHOICE.test(folded)) {
+    notes.push("They asked what you sell or what it costs, or they said any. Say the prices and how to pay, in a normal text. Do not ask what vibe or what kind.");
   }
   const asked = askKey(trimmed);
   if (AGE_ASKS.has(asked)) {
