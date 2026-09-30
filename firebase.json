@@ -25,6 +25,20 @@
         }
       },
       {
+        "source": "/library",
+        "run": {
+          "serviceId": "shop-try",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/library/**",
+        "run": {
+          "serviceId": "shop-try",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "run": {
           "serviceId": "shop-assistant",

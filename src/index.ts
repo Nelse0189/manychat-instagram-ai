@@ -3,6 +3,7 @@ import { config, firebaseConfigured, missingProductionSecrets } from "./config.j
 import { createFirestoreStore } from "./firestoreStore.js";
 import { releaseOrderFiles } from "./fulfill.js";
 import { resolveMediaFile } from "./library.js";
+import { mountLibraryPage } from "./libraryPage.js";
 import { createCloudTasksReplyScheduler } from "./cloudTasks.js";
 import { parseIncoming, sendManychatContent } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
@@ -54,7 +55,9 @@ app.get("/health", (_req, res) => {
   });
 });
 
-mountTryPage(app, (header) => config.tryPagePublic || adminAllowed(header), tryPageHtml);
+const pageAllowed = (header: string | undefined) => config.tryPagePublic || adminAllowed(header);
+mountTryPage(app, pageAllowed, tryPageHtml);
+mountLibraryPage(app, pageAllowed);
 
 app.post("/manychat/dynamic", async (req, res) => {
   if (!webhookAllowed(req.header("x-webhook-secret") ?? req.header("authorization"))) {
