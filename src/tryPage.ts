@@ -177,7 +177,8 @@ export function tryPageHtml(model: string): string {
           return;
         }
         if (!response.ok) {
-          bubble("error", payload.detail || payload.error || "The model did not answer.");
+          const creditError = /credits/i.test(payload.error || "");
+          bubble("error", creditError ? payload.error : payload.detail || payload.error || "The model did not answer.");
           status.textContent = "";
           return;
         }

@@ -86,9 +86,11 @@ export function mountTryPage(
     } catch (error) {
       const status = error instanceof TryChatError ? error.status : 502;
       const message = error instanceof Error ? error.message : "The model did not answer.";
+      const detail = message.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 180);
+      const credits = /402|credits|max_tokens|prompt tokens/i.test(message);
       res.status(status).json({
-        error: status === 400 ? message : "The model did not answer.",
-        detail: status === 400 ? undefined : message.slice(0, 300),
+        error: status === 400 ? message : credits ? "OpenRouter needs more credits before this chat can answer." : "The model did not answer.",
+        detail: status === 400 ? undefined : detail,
       });
     }
   });
