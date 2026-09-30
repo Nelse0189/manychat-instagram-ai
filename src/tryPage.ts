@@ -1,0 +1,204 @@
+export function tryPageHtml(model: string): string {
+  const boot = JSON.stringify({ model }).replaceAll("<", "\\u003c");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Try the voice</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #111;
+      color: #f4f4f5;
+      font: 16px/1.4 ui-sans-serif, system-ui, sans-serif;
+    }
+    main {
+      max-width: 440px;
+      min-height: 100vh;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      background: #18181b;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 16px;
+      border-bottom: 1px solid #2a2a2e;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p { margin: 0; color: #a1a1aa; font-size: 13px; }
+    button, textarea { font: inherit; }
+    button {
+      border: 0;
+      border-radius: 999px;
+      background: #f4f4f5;
+      color: #111;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    #secret-row { padding: 12px 16px 0; }
+    #secret-row label { display: grid; gap: 6px; font-size: 13px; color: #a1a1aa; }
+    input, textarea {
+      width: 100%;
+      border: 1px solid #3f3f46;
+      border-radius: 12px;
+      background: #09090b;
+      color: inherit;
+      padding: 10px 12px;
+    }
+    #log {
+      list-style: none;
+      margin: 0;
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #log li {
+      max-width: 85%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    #log .user { align-self: flex-end; background: #3b82f6; }
+    #log .assistant { align-self: flex-start; background: #27272a; }
+    #log .error { align-self: stretch; background: #3f1d1d; color: #fecaca; font-size: 14px; }
+    #empty { color: #71717a; font-size: 14px; }
+    form {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px 16px;
+      border-top: 1px solid #2a2a2e;
+      align-items: flex-end;
+    }
+    textarea { resize: none; min-height: 44px; }
+    #status { min-height: 1.2em; padding: 0 16px 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Try the voice</h1>
+        <p id="model-line"></p>
+      </div>
+      <button type="button" id="reset">New chat</button>
+    </header>
+    <div id="secret-row" hidden>
+      <label>Admin secret
+        <input id="secret" type="password" autocomplete="current-password">
+      </label>
+    </div>
+    <ol id="log"><li id="empty">Send a message. The reply shows up here as soon as it is written.</li></ol>
+    <p id="status"></p>
+    <form id="composer">
+      <textarea id="text" rows="2" maxlength="1000" placeholder="Say hey"></textarea>
+      <button type="submit" id="send">Send</button>
+    </form>
+  </main>
+  <script id="boot" type="application/json">${boot}</script>
+  <script>
+    const boot = JSON.parse(document.getElementById("boot").textContent);
+    const log = document.getElementById("log");
+    const text = document.getElementById("text");
+    const send = document.getElementById("send");
+    const status = document.getElementById("status");
+    const secretRow = document.getElementById("secret-row");
+    const secret = document.getElementById("secret");
+    document.getElementById("model-line").textContent =
+      "Replies immediately with " + boot.model + ". Nothing is sent to Instagram.";
+    secret.value = sessionStorage.getItem("try-admin-secret") || "";
+
+    function sessionId() {
+      let id = sessionStorage.getItem("try-session");
+      if (!id) {
+        id = crypto.randomUUID().replace(/-/g, "");
+        sessionStorage.setItem("try-session", id);
+      }
+      return id;
+    }
+
+    function bubble(className, message) {
+      const empty = document.getElementById("empty");
+      if (empty) empty.remove();
+      const item = document.createElement("li");
+      item.className = className;
+      item.textContent = message;
+      log.append(item);
+      item.scrollIntoView({ block: "nearest" });
+    }
+
+    document.getElementById("reset").addEventListener("click", () => {
+      sessionStorage.removeItem("try-session");
+      sessionId();
+      log.replaceChildren();
+      const empty = document.createElement("li");
+      empty.id = "empty";
+      empty.textContent = "Send a message. The reply shows up here as soon as it is written.";
+      log.append(empty);
+      status.textContent = "";
+      text.focus();
+    });
+
+    document.getElementById("composer").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = text.value.trim();
+      if (!message || send.disabled) return;
+      text.value = "";
+      bubble("user", message);
+      send.disabled = true;
+      status.textContent = "Writing…";
+      const headers = { "content-type": "application/json" };
+      if (secret.value.trim()) headers.authorization = "Bearer " + secret.value.trim();
+      try {
+        const response = await fetch("/try/message", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ sessionId: sessionId(), text: message }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          secretRow.hidden = false;
+          secret.focus();
+          bubble("error", "This server wants the admin secret. Paste it above, then send again.");
+          status.textContent = "";
+          return;
+        }
+        if (!response.ok) {
+          bubble("error", payload.detail || payload.error || "The model did not answer.");
+          status.textContent = "";
+          return;
+        }
+        sessionStorage.setItem("try-admin-secret", secret.value.trim());
+        bubble("assistant", payload.reply || "");
+        status.textContent = "";
+      } catch (error) {
+        bubble("error", "The page could not reach the server.");
+        status.textContent = "";
+      } finally {
+        send.disabled = false;
+        text.focus();
+      }
+    });
+
+    text.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        document.getElementById("composer").requestSubmit();
+      }
+    });
+    text.focus();
+  </script>
+</body>
+</html>`;
+}

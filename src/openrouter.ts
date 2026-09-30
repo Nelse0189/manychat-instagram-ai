@@ -21,7 +21,7 @@ export type OpenRouterChatRequest = {
     temperature: number;
     max_tokens: number;
     session_id: string;
-    reasoning: { effort: "minimal" };
+    reasoning: { effort: "low" };
     messages: ChatRequestMessage[];
   };
 };
@@ -74,10 +74,10 @@ export function buildOpenRouterChatRequest(
     body: {
       model: config.openRouterModel,
       temperature: 0.8,
-      // GPT-5 spends this budget on reasoning unless effort is minimal, and a
-      // larger cap is rejected when the key cannot pre-authorize it.
-      max_tokens: 100,
-      reasoning: { effort: "minimal" },
+      // GPT-6.1 Sol has no minimal reasoning effort. Low leaves room for a short
+      // DM inside this cap, which stays small so the key can pre-authorize it.
+      max_tokens: 200,
+      reasoning: { effort: "low" },
       session_id: sessionId,
       messages,
     },

@@ -15,11 +15,11 @@ const ctx: SalesContext = {
   language: "en",
 };
 
-test("the code default model is OpenAI GPT-5", () => {
+test("the code default model is OpenAI GPT-6.1 Sol", () => {
   const source = readFileSync(new URL("./config.ts", import.meta.url), "utf8");
   const example = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
-  assert.match(source, /OPENROUTER_MODEL \?\? "openai\/gpt-5"/);
-  assert.match(example, /^OPENROUTER_MODEL=openai\/gpt-5$/m);
+  assert.match(source, /OPENROUTER_MODEL \?\? "openai\/gpt-6\.1-sol"/);
+  assert.match(example, /^OPENROUTER_MODEL=openai\/gpt-6\.1-sol$/m);
   assert.doesNotMatch(source, /anthropic\/|x-ai\/grok/i);
   assert.doesNotMatch(example, /anthropic\/|x-ai\/grok/i);
 });
@@ -33,9 +33,9 @@ test("the outgoing request caches only the stable system prompt", () => {
   const request = buildOpenRouterChatRequest(ctx, history, userText);
   const sessionId = cacheSessionId(ctx.shopHandle);
 
-  assert.equal(request.body.model, process.env.OPENROUTER_MODEL ?? "openai/gpt-5");
-  assert.equal(request.body.max_tokens, 100);
-  assert.deepEqual(request.body.reasoning, { effort: "minimal" });
+  assert.equal(request.body.model, process.env.OPENROUTER_MODEL ?? "openai/gpt-6.1-sol");
+  assert.equal(request.body.max_tokens, 200);
+  assert.deepEqual(request.body.reasoning, { effort: "low" });
   assert.equal(request.body.temperature, 0.8);
   assert.equal(request.body.session_id, sessionId);
   assert.equal(request.headers["x-session-id"], sessionId);

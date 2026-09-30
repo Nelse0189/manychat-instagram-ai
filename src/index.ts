@@ -8,6 +8,8 @@ import { parseIncoming, sendManychatContent } from "./manychat.js";
 import { createMemoryStore, isOrderStatus } from "./memoryStore.js";
 import { acceptShopMessage, deliverScheduledReply } from "./replyGate.js";
 import type { Store } from "./store.js";
+import { mountTryPage } from "./tryChat.js";
+import { tryPageHtml } from "./tryPage.js";
 
 const missing = missingProductionSecrets();
 if (missing.length > 0) {
@@ -46,10 +48,13 @@ app.get("/health", (_req, res) => {
     ok: true,
     firebase: firebaseConfigured(),
     openrouter: Boolean(config.openRouterApiKey),
+    model: config.openRouterModel,
     paymentsEnabled: config.paymentsEnabled,
     publicBaseUrl: Boolean(config.publicBaseUrl),
   });
 });
+
+mountTryPage(app, adminAllowed, tryPageHtml);
 
 app.post("/manychat/dynamic", async (req, res) => {
   if (!webhookAllowed(req.header("x-webhook-secret") ?? req.header("authorization"))) {

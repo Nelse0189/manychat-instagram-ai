@@ -146,6 +146,7 @@ export async function composeCustomerReply(input: {
   paymentScreenshot: boolean;
   quoted: boolean;
   claimed: boolean;
+  surfaceModelErrors?: boolean;
 }): Promise<Decision> {
   let decision = input.decision;
   const situation = modelSituation(input.userText, input.ctx, {
@@ -168,7 +169,8 @@ export async function composeCustomerReply(input: {
       } else if (reply) {
         decision = { ...decision, reply };
       }
-    } catch {
+    } catch (error) {
+      if (input.surfaceModelErrors) throw error;
       if (!decision) {
         decision = {
           reply: supportText(input.language),
@@ -233,7 +235,11 @@ export async function composeCustomerReply(input: {
   return decision;
 }
 
-export async function handleIncoming(store: Store, incoming: IncomingMessage): Promise<Decision> {
+export async function handleIncoming(
+  store: Store,
+  incoming: IncomingMessage,
+  options?: { surfaceModelErrors?: boolean },
+): Promise<Decision> {
   const recorded = await recordIncoming(store, incoming);
   const decision = await composeCustomerReply({
     store,
@@ -249,6 +255,7 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
     paymentScreenshot: recorded.paymentScreenshot,
     quoted: recorded.quoted,
     claimed: recorded.claimed,
+    surfaceModelErrors: options?.surfaceModelErrors,
   });
   await store.addMessage(incoming.subscriberId, {
     role: "assistant",

@@ -13,7 +13,7 @@ export const config = {
   webhookSecret: process.env.WEBHOOK_SECRET ?? "",
   adminSecret: process.env.ADMIN_SECRET ?? "",
   openRouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
-  openRouterModel: process.env.OPENROUTER_MODEL ?? "openai/gpt-5",
+  openRouterModel: process.env.OPENROUTER_MODEL ?? "openai/gpt-6.1-sol",
   manychatApiToken: process.env.MANYCHAT_API_TOKEN ?? "",
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "",
   firebaseDatabaseId: process.env.FIREBASE_DATABASE_ID ?? "shop",
