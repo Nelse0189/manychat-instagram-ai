@@ -59,6 +59,7 @@ test("the library page lists real photos and videos and downloads one file", asy
     assert.doesNotMatch(html, /missing\.mp4/);
     assert.doesNotMatch(html, /voice\.mp3/);
     assert.match(html, /1 photo, 1 video/);
+    assert.match(html, /li\[hidden\] \{ display: none !important; \}/);
 
     const file = await fetch(`${running.url}/library/file?name=${encodeURIComponent("selfie one.jpg")}`);
     assert.equal(file.status, 200);

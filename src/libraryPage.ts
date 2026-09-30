@@ -90,6 +90,7 @@ export function libraryPageHtml(files: LibraryFile[]): string {
       background: #18181b;
       border-radius: 12px;
     }
+    li[hidden] { display: none !important; }
     li.empty { display: block; color: #a1a1aa; }
     .kind { color: #a1a1aa; font-size: 12px; text-transform: uppercase; }
     .name { overflow-wrap: anywhere; }

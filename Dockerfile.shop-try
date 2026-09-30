@@ -1,0 +1,2 @@
+FROM us-central1-docker.pkg.dev/arial-luxe-shop/shop/shop-try:1c1599c
+COPY src ./src
