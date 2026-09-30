@@ -144,7 +144,7 @@ export function tryPageHtml(model: string): string {
     }
 
     function usageNote(usage) {
-      if (!usage) return "scripted · 0 tokens";
+      if (!usage) return "";
       promptSum += usage.promptTokens || 0;
       completionSum += usage.completionTokens || 0;
       if (usage.costUsd != null) {

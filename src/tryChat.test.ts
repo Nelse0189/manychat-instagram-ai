@@ -54,7 +54,7 @@ test("the try page names the model and answers without waiting", async (t) => {
   const html = await page.text();
   assert.match(html, /x-ai\/grok-4\.20/);
   assert.match(html, /this chat · no tokens yet/);
-  assert.match(html, /scripted · 0 tokens/);
+  assert.doesNotMatch(html, /scripted/);
 
   const denied = await fetch(`${running.url}/try/message`, {
     method: "POST",
@@ -73,12 +73,9 @@ test("the try page names the model and answers without waiting", async (t) => {
   });
   assert.equal(catalog.status, 200);
   const catalogBody = (await catalog.json()) as { reply: string; model: string; usage: null };
-  assert.match(catalogBody.reply, /\$15/);
-  assert.match(catalogBody.reply, /non-nude selfies/);
-  assert.doesNotMatch(catalogBody.reply, /\bpacks?\b/i);
+  assert.equal(catalogBody.reply, "model saw: catalog");
   assert.equal(catalogBody.model, "x-ai/grok-4.20");
   assert.equal(catalogBody.usage, null);
-  assert.equal(seen.length, 0);
 
   const first = await fetch(`${running.url}/try/message`, {
     method: "POST",
@@ -101,7 +98,7 @@ test("the try page names the model and answers without waiting", async (t) => {
     body: JSON.stringify({ sessionId, text: "you up?" }),
   });
   assert.equal(second.status, 200);
-  assert.deepEqual(seen, ["0:hey", "2:you up?"]);
+  assert.deepEqual(seen, ["0:catalog", "0:hey", "2:you up?"]);
 });
 
 test("a model failure is shown instead of a stock support line", async (t) => {

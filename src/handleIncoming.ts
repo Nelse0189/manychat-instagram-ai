@@ -11,7 +11,6 @@ import {
   decisionFromModel,
   modelSituation,
   resolveReplyLanguage,
-  supportText,
   textShowsPaymentScreenshot,
   type ReplyLanguage,
   type SalesContext,
@@ -160,45 +159,19 @@ export async function composeCustomerReply(input: {
       : situation;
 
   if (!decision || decision.useModel) {
-    try {
-      const raw = await completeReply(input.ctx, input.history, input.userText, situationText);
-      const reply = customerReplyText(raw);
-      if (!decision) {
-        decision = decisionFromModel(raw, input.ctx);
-        decision = { ...decision, reply: reply || decision.reply };
-      } else if (reply) {
-        decision = { ...decision, reply };
-      }
-    } catch (error) {
-      if (input.surfaceModelErrors) throw error;
-      if (!decision) {
-        decision = {
-          reply: supportText(input.language),
-          intent: "support",
-          needsHuman: true,
-          useModel: false,
-          packId: null,
-          orderAction: null,
-          media: [],
-        };
-      } else if (!decision.reply) {
-        decision = { ...decision, reply: supportText(input.language) };
-      }
+    const raw = await completeReply(input.ctx, input.history, input.userText, situationText);
+    const reply = customerReplyText(raw);
+    if (!decision) {
+      decision = decisionFromModel(raw, input.ctx);
+      decision = { ...decision, reply: reply || decision.reply };
+    } else if (reply) {
+      decision = { ...decision, reply };
     }
   }
 
-  if (!decision) {
-    decision = {
-      reply: supportText(input.language),
-      intent: "support",
-      needsHuman: true,
-      useModel: false,
-      packId: null,
-      orderAction: null,
-      media: [],
-    };
+  if (!decision || (!decision.reply && input.media.length === 0)) {
+    throw new Error("The model did not answer.");
   }
-  if (!decision.reply) decision = { ...decision, reply: supportText(input.language) };
 
   if (decision.orderAction === "quote" && decision.packId && !input.quoted) {
     const pack = packById(decision.packId);
