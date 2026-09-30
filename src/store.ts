@@ -1,4 +1,5 @@
-import type { ChatMessage, Order, OrderStatus, Subscriber } from "./types.js";
+import type { PendingPatch } from "./pendingReply.js";
+import type { ChatMessage, Order, OrderStatus, PendingReply, Subscriber } from "./types.js";
 
 export type NewOrder = Omit<Order, "id" | "createdAt" | "updatedAt">;
 
@@ -14,6 +15,13 @@ export interface Store {
   fulfillOrder(orderId: string, fileNames: string[], downloadToken: string): Promise<Order | null>;
   orderByToken(downloadToken: string): Promise<Order | null>;
   listOrders(status?: OrderStatus): Promise<Order[]>;
+  hasAssistantReply(subscriberId: string): Promise<boolean>;
+  getPendingReply(subscriberId: string): Promise<PendingReply | null>;
+  mergePendingReply(
+    patch: PendingPatch,
+  ): Promise<{ pending: PendingReply; created: boolean }>;
+  attachPendingTask(subscriberId: string, taskName: string): Promise<void>;
+  deletePendingReply(subscriberId: string): Promise<void>;
 }
 
 export function emptySubscriber(input: {

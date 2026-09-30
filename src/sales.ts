@@ -98,6 +98,13 @@ const SPANISH_WORDS = new Set([
   "dinero",
   "cuanto",
   "comprobante",
+  "cuantos",
+  "anos",
+  "tienes",
+  "edad",
+  "eres",
+  "vives",
+  "estas",
 ]);
 
 const ENGLISH_WORDS = new Set([
@@ -144,17 +151,25 @@ const ENGLISH_WORDS = new Set([
   "order",
   "pack",
   "there",
+  "old",
+  "age",
+  "live",
+  "from",
+  "city",
+  "state",
+  "located",
 ]);
 
 function decision(
-  partial: Omit<Decision, "packId" | "orderAction" | "useModel" | "needsHuman"> &
-    Partial<Pick<Decision, "packId" | "orderAction" | "useModel" | "needsHuman">>,
+  partial: Omit<Decision, "packId" | "orderAction" | "useModel" | "needsHuman" | "media"> &
+    Partial<Pick<Decision, "packId" | "orderAction" | "useModel" | "needsHuman" | "media">>,
 ): Decision {
   return {
     packId: null,
     orderAction: null,
     useModel: false,
     needsHuman: false,
+    media: [],
     ...partial,
   };
 }
@@ -252,10 +267,6 @@ function replyLanguage(ctx: SalesContext, text = ""): ReplyLanguage {
   return detectMessageLanguage(text) ?? "en";
 }
 
-export function welcomeText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "hola. fotos o videos? dime y te paso precios.";
-  return "hey. photos or videos? tell me and I'll send prices.";
-}
 
 function payWith(ctx: SalesContext, language: ReplyLanguage): string {
   const venmo = ctx.venmoHandle ? `Venmo @${ctx.venmoHandle.replace(/^@/, "")}` : "";
@@ -312,8 +323,8 @@ export function supportText(language: ReplyLanguage = "en"): string {
 }
 
 export function optOutText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "ok ya, no te mando más. si luego quieres ver, dime catalog.";
-  return "ok, I won't text you again. if you want to look later, say catalog.";
+  if (language === "es") return "ok ya no te escribo. dime catalog si luego quieres ver.";
+  return "ok I won't text you again. say catalog if you wanna look later.";
 }
 
 export function isPaymentImageUrl(raw: string): boolean {
@@ -343,37 +354,23 @@ export function textShowsPaymentScreenshot(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || (trimmed.includes("{{") && trimmed.includes("}}"))) return false;
   if (IMAGE_PLACEHOLDER.test(trimmed) || BARE_IMAGE_PLACEHOLDER.test(trimmed)) return true;
-  if (ATTACHMENT_CLAIM.test(trimmed) || SPANISH_SCREENSHOT.test(fold(trimmed))) return true;
   return (trimmed.match(/https?:\/\/[^\s<>"']+/gi) ?? []).some(isPaymentImageUrl);
 }
 
-export function paymentInstructions(order: Order, ctx: SalesContext): string {
-  const language = replyLanguage(ctx);
-  const pack = spokenPack(order.packName, language);
-  const how = payWith(ctx, language);
-  if (language === "es") {
-    return `${pack} $${order.amountUsd}. ${how}. pon ${order.reference} en la nota y mándame la captura.`;
-  }
-  return `${pack} $${order.amountUsd}. ${how}. put ${order.reference} in the note and send me the screenshot.`;
+export function claimsPaymentScreenshot(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || textShowsPaymentScreenshot(trimmed)) return false;
+  return ATTACHMENT_CLAIM.test(trimmed) || SPANISH_SCREENSHOT.test(fold(trimmed));
 }
 
-export function paidClaimText(_reference: string, language: ReplyLanguage = "en"): string {
-  if (language === "es") return "mándame la captura del pago y te mando los archivos.";
-  return "send me the payment screenshot and I'll send you the files.";
-}
-
-export function filesReadyText(
-  _reference: string,
-  downloads: string[],
-  language: ReplyLanguage = "en",
-): string {
-  if (language === "es") return `ya vi la captura. aquí van:\n${downloads.join("\n")}`;
-  return `saw the screenshot. here you go:\n${downloads.join("\n")}`;
-}
-
-export function filesUnavailableText(language: ReplyLanguage = "en"): string {
-  if (language === "es") return "vi la captura. ahorita no te puedo pasar los archivos, ya le digo a alguien.";
-  return "saw the screenshot. I can't send the files right now, I'll have someone look.";
+export function customerReplyText(raw: string): string {
+  const parsed = parseModelJson(raw);
+  const reply = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : raw.trim();
+  return reply
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\/downloads\/\S+/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export function checkoutClosedText(
@@ -383,29 +380,66 @@ export function checkoutClosedText(
 ): string {
   const pack = spokenPack(packName, language);
   if (language === "es") {
-    return `${pack} $${amountUsd}. todavía no estoy cobrando, así que no te puedo mandar nada. te dejo ese precio.`;
+    return `${pack} $${amountUsd}. todavía no estoy cobrando, no te puedo mandar nada.`;
   }
-  return `${pack} $${amountUsd}. I'm not charging yet, so I can't send you anything. I'll leave you that price.`;
-}
-
-function noOpenOrderImageText(language: ReplyLanguage): string {
-  if (language === "es") {
-    return "todavía no tengo nada tuyo. dime qué quieres, una foto o un video, y te digo dónde pagar.";
-  }
-  return "I don't have anything open for you yet. tell me what you want, a photo or a video, and I'll tell you where to pay.";
-}
-
-function paidWithoutOrderText(language: ReplyLanguage): string {
-  if (language === "es") {
-    return "no tengo nada abierto contigo. primero dime una foto, tres fotos o cinco fotos.";
-  }
-  return "I don't have anything open with you. first tell me one photo, three photos, or five photos.";
+  return `${pack} $${amountUsd}. I'm not charging yet, so I can't send you anything.`;
 }
 
 function paymentsClosedScreenshotText(language: ReplyLanguage): string {
   if (language === "es") return "todavía no estoy cobrando, así que no te puedo mandar nada por esa captura.";
   return "I'm not charging yet, so I can't send you anything for that screenshot.";
 }
+
+function askKey(text: string): string {
+  return fold(text)
+    .replace(/[?!.]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:hey|hi|hello|hola)\s+/, "");
+}
+
+const AGE_ASKS = new Set([
+  "how old are you",
+  "how old r u",
+  "how old are u",
+  "how old ru",
+  "whats your age",
+  "what's your age",
+  "what is your age",
+  "what age are you",
+  "your age",
+  "are you 18",
+  "cuantos anos tienes",
+  "que edad tienes",
+  "cual es tu edad",
+  "tu edad",
+  "cuantos anos",
+  "edad",
+]);
+
+const LOCATION_ASKS = new Set([
+  "where are you",
+  "where r u",
+  "where are u",
+  "where you at",
+  "where you from",
+  "where are you from",
+  "where do you live",
+  "where you live",
+  "where are you located",
+  "where you located",
+  "what city are you in",
+  "what state are you in",
+  "whats your location",
+  "what's your location",
+  "donde estas",
+  "donde estas tu",
+  "de donde eres",
+  "donde vives",
+  "en donde estas",
+  "de que ciudad eres",
+  "de que estado eres",
+]);
 
 function paymentsClosedPaidText(language: ReplyLanguage): string {
   if (language === "es") {
@@ -499,12 +533,14 @@ export function decideDeterministic(
     }
     if (!ctx.openOrder) {
       return decision({
-        reply: noOpenOrderImageText(language),
+        reply: "",
+        useModel: true,
         intent: "payment_claim",
       });
     }
     return decision({
       reply: "",
+      useModel: true,
       intent: "payment_claim",
       packId: ctx.openOrder.packId,
       orderAction: "fulfill",
@@ -513,12 +549,13 @@ export function decideDeterministic(
 
   if (!trimmed) {
     return decision({
-      reply: welcomeText(language),
+      reply: "",
+      useModel: true,
       intent: "browse",
     });
   }
 
-  if (PAID.test(folded)) {
+  if (PAID.test(folded) || claimsPaymentScreenshot(trimmed)) {
     if (!ctx.paymentsEnabled) {
       return decision({
         reply: paymentsClosedPaidText(language),
@@ -528,16 +565,26 @@ export function decideDeterministic(
     }
     if (!ctx.openOrder) {
       return decision({
-        reply: paidWithoutOrderText(language),
+        reply: "",
+        useModel: true,
         intent: "payment_claim",
       });
     }
     return decision({
-      reply: paidClaimText(ctx.openOrder.reference, language),
+      reply: "",
+      useModel: true,
       intent: "payment_claim",
       packId: ctx.openOrder.packId,
       orderAction: "claim_payment",
     });
+  }
+
+  const asked = askKey(trimmed);
+  if (AGE_ASKS.has(asked)) {
+    return decision({ reply: "", useModel: true, intent: "other" });
+  }
+  if (LOCATION_ASKS.has(asked)) {
+    return decision({ reply: "", useModel: true, intent: "other" });
   }
 
   if (ctx.optedOut && !CATALOG.test(folded) && !PHOTOS.test(folded)) {
@@ -565,6 +612,7 @@ export function decideDeterministic(
     }
     return decision({
       reply: "",
+      useModel: true,
       intent: "purchase",
       packId,
       orderAction: "quote",
@@ -591,32 +639,80 @@ const INTENTS = new Set([
   "other",
 ]);
 
-export function systemPrompt(ctx: SalesContext): string {
+export function turnInstruction(ctx: SalesContext): string {
   const language = replyLanguage(ctx);
-  const languageLine =
-    language === "es"
-      ? "This turn is Spanish. Reply in casual Spanish only."
-      : "This turn is English. Reply in casual English only. Do not answer in Spanish.";
+  if (language === "es") {
+    return "This turn is Spanish. Reply in casual Spanish only, like a real person texting. Vary it with what they just said. Do not reuse a stock line.";
+  }
+  return "This turn is English. Reply in casual English only. Do not answer in Spanish. Sound like a real person texting, and vary it with their latest message instead of a template.";
+}
+
+export function modelSituation(
+  text: string,
+  ctx: SalesContext,
+  flags: { paymentScreenshot: boolean; filesReady: boolean; filesFailed: boolean },
+): string {
+  const trimmed = text.trim();
+  const folded = fold(trimmed);
+  const notes = [
+    "Answer the customer's latest message in your own words. Sound like a real person texting. Vary the wording. Do not reuse a template or a stock line.",
+  ];
+  if (!trimmed) {
+    notes.push("They just opened the chat. Greet them from that, not from a saved welcome.");
+  }
+  const asked = askKey(trimmed);
+  if (AGE_ASKS.has(asked)) {
+    notes.push("They asked your age. You are 21. Say so in their language in words that fit this message.");
+  }
+  if (LOCATION_ASKS.has(asked)) {
+    notes.push("They asked where you are. You are in the US. Do not invent a city, state, school, job, or boyfriend.");
+  }
+  if (flags.filesReady && ctx.openOrder) {
+    notes.push(
+      `A payment-screen image arrived for their open ${ctx.openOrder.packName} order. The files go out as chat media after your text. Do not paste a link or an order code.`,
+    );
+  } else if (flags.filesFailed) {
+    notes.push("The payment screen was real, but the files cannot be sent right now. Say that in your own words. Do not paste a link.");
+  } else if (flags.paymentScreenshot && !ctx.openOrder) {
+    notes.push("They sent an image and there is no open order. Do not say any files are on the way.");
+  } else if (PAID.test(folded) || claimsPaymentScreenshot(trimmed)) {
+    notes.push("They said they paid or mentioned a screenshot, and no payment-screen image arrived. Do not say the files were sent.");
+  }
+  const packId = packFromText(trimmed);
+  if (packId && ctx.paymentsEnabled) {
+    const pack = packById(packId);
+    if (pack) {
+      notes.push(
+        `They brought up ${pack.name} at $${pack.priceUsd}. Mention the price, Venmo, or Cash App only if this message calls for it.`,
+      );
+    }
+  }
+  return notes.join(" ");
+}
+
+export function systemPrompt(ctx: SalesContext): string {
   return [
     `You write the Instagram DMs for @${ctx.shopHandle} in the account's own texting voice.`,
-    "Voice: casual, like her captions. Short. First person. A little jaja or one emoji is fine in Spanish, and a little haha or one emoji is fine in English. Write like a text, not like support, a receipt, or a policy.",
-    "Do not invent a biography, a real name, a city, friends, or a personal story. Do not say you are a bot, an assistant, automated, or a team.",
-    languageLine,
+    "You are 21. Sound like a real person texting: short, casual, first person. You are semi-interested, not eager and not a salesperson. Answer what they just said. Vary the wording. Do not reuse a template or a stock line. Do not sound like a shop bot, a receipt, or a policy.",
+    "You can be confident about your body. Do not obsess over breast size. Do not bring up 30k or your chest unless they asked or it naturally fits that message.",
+    "You are 21. If they ask your age, tell them I'm 21 in English or tengo 21 in Spanish, in words that fit this message, not as a stock line.",
+    "You are in the US. If they ask where you are, say I'm in the US in English or estoy en US in Spanish, in your own words. Do not invent a city, state, school, job, boyfriend, or any other biography.",
+    "Do not invent a real name or a life story. Do not say you are a bot, an assistant, automated, or a team.",
     "Spanish is not the default. Never answer an English sentence in Spanish. Use Spanish only when the customer wrote in Spanish.",
     "Sell only photo or video files from this collection. Do not invent prices, discounts, exclusivity, or whether a file was already sent.",
     catalogSummary(),
     `The only places to pay are Venmo @${ctx.venmoHandle.replace(/^@/, "")} and Cash App $${ctx.cashAppTag.replace(/^\$/, "")}.`,
+    "Prices, Venmo, and Cash App are facts you can use when the message is about buying. It does not have to be a formal quote. Do not paste them into every reply.",
     "Never ask for card numbers or passwords.",
-    "If they only say they paid, ask for a screenshot of the payment and do not send files.",
-    "A screenshot with no open order does not release files. Ask which pack they want.",
-    "When a screenshot arrives for an open order, the server sends the download links in the reply. Do not invent links or an order code.",
+    "Only an actual payment screenshot image releases files. If they say they paid, or say a screenshot is attached, but there is no payment-screen image, ask for a screenshot of the payment and do not send files.",
+    "A screenshot or image with no open order does not release files. Ask which pack they want.",
+    "An actual payment screenshot on an open order is the only payment verification. React in your own words when that happens. The server sends the photos or videos as chat messages after your text. Do not put a link, a URL, or an order code in the reply. Do not ask them to put a code in the Venmo or Cash App note. Do not say a person still has to match Venmo or Cash App.",
     `Payments enabled: ${ctx.paymentsEnabled ? "yes" : "no"}.`,
     ctx.paymentsEnabled
-      ? "If they choose a pack, set intent to purchase and packId. The server sends where to pay, including the note code."
+      ? "If they choose a pack, set intent to purchase and packId. Do not mention an order code or a payment note."
       : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles. Say you are not charging yet, in her voice, in the customer's language.",
     "If the catalog does not answer, set needsHuman true and say you'll have someone look, in her voice.",
     "If they want messages to stop, set intent to opt_out.",
-    'Match this length. Spanish: "hola. fotos o videos?", "mándame la captura del pago y te mando los archivos.", "ya vi la captura. aquí van:". English: "hey. photos or videos?", "send me the payment screenshot and I\'ll send you the files.", "saw the screenshot. here you go:".',
     'Return only JSON: {"reply": string, "intent": "browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other", "packId": "photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null, "needsHuman": boolean}',
   ].join("\n");
 }
@@ -647,14 +743,16 @@ export function decisionFromModel(raw: string, ctx: SalesContext): Decision {
   }
 
   if (intent === "payment_claim") {
-    return (
-      decideDeterministic("I paid", ctx) ??
-      decision({
+    const control = decideDeterministic("I paid", ctx);
+    if (!control) {
+      return decision({
         reply: paymentMismatchText(language),
         intent: "payment_claim",
         needsHuman: true,
-      })
-    );
+      });
+    }
+    if (!control.useModel) return control;
+    return { ...control, reply };
   }
 
   if (intent === "videos") {
@@ -671,7 +769,8 @@ export function decisionFromModel(raw: string, ctx: SalesContext): Decision {
       });
     }
     return decision({
-      reply: "",
+      reply,
+      useModel: true,
       intent: "purchase",
       packId: pack.id,
       orderAction: "quote",

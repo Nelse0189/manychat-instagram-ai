@@ -1,17 +1,20 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { mergePendingReply } from "./pendingReply.js";
 import type { NewOrder, Store } from "./store.js";
-import type { ChatMessage, Order, OrderStatus, Subscriber } from "./types.js";
+import type { ChatMessage, Order, OrderStatus, PendingReply, Subscriber } from "./types.js";
 
 type MemoryState = {
   subscribers: Map<string, Subscriber>;
   messages: Map<string, ChatMessage[]>;
   orders: Map<string, Order>;
+  pending: Map<string, PendingReply>;
 };
 
 export function createMemoryStore(state: MemoryState = {
   subscribers: new Map(),
   messages: new Map(),
   orders: new Map(),
+  pending: new Map(),
 }): Store {
   return {
     async getSubscriber(subscriberId) {
@@ -82,6 +85,26 @@ export function createMemoryStore(state: MemoryState = {
       return [...state.orders.values()]
         .filter((order) => (status ? order.status === status : true))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+    async hasAssistantReply(subscriberId) {
+      return (state.messages.get(subscriberId) ?? []).some((message) => message.role === "assistant");
+    },
+    async getPendingReply(subscriberId) {
+      return state.pending.get(subscriberId) ?? null;
+    },
+    async mergePendingReply(patch) {
+      const current = state.pending.get(patch.subscriberId) ?? null;
+      const pending = mergePendingReply(current, patch);
+      state.pending.set(patch.subscriberId, pending);
+      return { pending, created: current == null };
+    },
+    async attachPendingTask(subscriberId, taskName) {
+      const current = state.pending.get(subscriberId);
+      if (!current || current.taskName) return;
+      state.pending.set(subscriberId, { ...current, taskName });
+    },
+    async deletePendingReply(subscriberId) {
+      state.pending.delete(subscriberId);
     },
   };
 }
