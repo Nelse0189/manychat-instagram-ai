@@ -34,6 +34,7 @@ export function tryPageHtml(model: string): string {
     }
     h1 { font-size: 18px; margin: 0 0 4px; }
     p { margin: 0; color: #a1a1aa; font-size: 13px; }
+    #totals { margin-top: 4px; font-size: 12px; }
     button, textarea { font: inherit; }
     button {
       border: 0;
@@ -75,6 +76,7 @@ export function tryPageHtml(model: string): string {
     #log .user { align-self: flex-end; background: #3b82f6; }
     #log .assistant { align-self: flex-start; background: #27272a; }
     #log .error { align-self: stretch; background: #3f1d1d; color: #fecaca; font-size: 14px; }
+    #log .usage { margin-top: 6px; color: #a1a1aa; font-size: 11px; }
     #empty { color: #71717a; font-size: 14px; }
     form {
       display: flex;
@@ -93,6 +95,7 @@ export function tryPageHtml(model: string): string {
       <div>
         <h1>Shop chat</h1>
         <p id="model-line"></p>
+        <p id="totals">this chat · no tokens yet</p>
       </div>
       <button type="button" id="reset">New chat</button>
     </header>
@@ -117,6 +120,11 @@ export function tryPageHtml(model: string): string {
     const status = document.getElementById("status");
     const secretRow = document.getElementById("secret-row");
     const secret = document.getElementById("secret");
+    const totals = document.getElementById("totals");
+    let promptSum = 0;
+    let completionSum = 0;
+    let costSum = 0;
+    let sawCost = false;
     document.getElementById("model-line").textContent =
       "Same agent as ManyChat. Replies here, not on Instagram.";
     secret.value = sessionStorage.getItem("try-admin-secret") || "";
@@ -130,12 +138,37 @@ export function tryPageHtml(model: string): string {
       return id;
     }
 
-    function bubble(className, message) {
+    function money(amount) {
+      if (amount == null || !Number.isFinite(amount)) return "";
+      return " · $" + (amount < 0.01 ? amount.toFixed(6) : amount.toFixed(4));
+    }
+
+    function usageNote(usage) {
+      if (!usage) return "scripted · 0 tokens";
+      promptSum += usage.promptTokens || 0;
+      completionSum += usage.completionTokens || 0;
+      if (usage.costUsd != null) {
+        costSum += usage.costUsd;
+        sawCost = true;
+      }
+      totals.textContent =
+        "this chat · " + promptSum + " in · " + completionSum + " out" + (sawCost ? money(costSum) : "");
+      const total = usage.totalTokens == null ? (usage.promptTokens || 0) + (usage.completionTokens || 0) : usage.totalTokens;
+      return usage.promptTokens + " in · " + usage.completionTokens + " out · " + total + " total" + money(usage.costUsd);
+    }
+
+    function bubble(className, message, note) {
       const empty = document.getElementById("empty");
       if (empty) empty.remove();
       const item = document.createElement("li");
       item.className = className;
       item.textContent = message;
+      if (note) {
+        const line = document.createElement("div");
+        line.className = "usage";
+        line.textContent = note;
+        item.append(line);
+      }
       log.append(item);
       item.scrollIntoView({ block: "nearest" });
     }
@@ -148,6 +181,11 @@ export function tryPageHtml(model: string): string {
       empty.id = "empty";
       empty.textContent = "Message the same shop agent Instagram uses. Replies stay in this chat.";
       log.append(empty);
+      promptSum = 0;
+      completionSum = 0;
+      costSum = 0;
+      sawCost = false;
+      totals.textContent = "this chat · no tokens yet";
       status.textContent = "";
       text.focus();
     });
@@ -183,7 +221,7 @@ export function tryPageHtml(model: string): string {
           return;
         }
         sessionStorage.setItem("try-admin-secret", secret.value.trim());
-        bubble("assistant", payload.reply || "");
+        bubble("assistant", payload.reply || "", usageNote(payload.usage));
         status.textContent = "";
       } catch (error) {
         bubble("error", "The page could not reach the server.");

@@ -300,21 +300,21 @@ export function catalogText(ctx: SalesContext, language: ReplyLanguage = replyLa
     const payment = ctx.paymentsEnabled
       ? ` se paga por ${payWith(ctx, language)}.`
       : " todavía no estoy cobrando.";
-    return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} dime cuál quieres.`;
+    return `selfies sin desnudo: una $15, tres $40, cinco $60. videos estilo tiktok: uno $25, tres $60, cinco $90.${payment} dime cuál quieres.`;
   }
   const payment = ctx.paymentsEnabled
     ? ` pay with ${payWith(ctx, language)}.`
     : " I'm not charging yet.";
-  return `photos: one $15, three $40, five $60. videos: one $25, three $60, five $90.${payment} tell me which you want.`;
+  return `non-nude selfies: one $15, three $40, five $60. tiktok-style videos: one $25, three $60, five $90.${payment} tell me which you want.`;
 }
 
 export function videosText(ctx: SalesContext, language: ReplyLanguage = replyLanguage(ctx)): string {
   if (language === "es") {
     const payment = ctx.paymentsEnabled ? ` se paga por ${payWith(ctx, language)}.` : "";
-    return `videos: uno $25, tres $60, cinco $90.${payment} dime uno, tres o cinco.`;
+    return `videos estilo tiktok: uno $25, tres $60, cinco $90.${payment} dime uno, tres o cinco.`;
   }
   const payment = ctx.paymentsEnabled ? ` pay with ${payWith(ctx, language)}.` : "";
-  return `videos: one $25, three $60, five $90.${payment} tell me one, three, or five.`;
+  return `tiktok-style videos: one $25, three $60, five $90.${payment} tell me one, three, or five.`;
 }
 
 export function supportText(language: ReplyLanguage = "en"): string {
@@ -691,18 +691,18 @@ export function modelSituation(
 export function systemPrompt(ctx: SalesContext): string {
   const venmo = ctx.venmoHandle.replace(/^@/, "");
   const cash = ctx.cashAppTag.replace(/^\$/, "");
-  const prices = "photos $15, $40, $60. videos $25, $60, $90.";
   const checkout = ctx.paymentsEnabled
-    ? `${prices} Venmo @${venmo}. Cash App $${cash}. It does not have to be a formal quote. Do not paste them into every reply.`
+    ? `Non-nude selfies $15, $40, $60. TikTok-style videos $25, $60, $90. Venmo @${venmo}. Cash App $${cash}. It does not have to be a formal quote. Do not paste them into every reply.`
     : "Checkout is closed. Do not mention Venmo, Cash App, or payment handles.";
   return [
-    `Sound like a real person texting: short, casual, first person. You are semi-interested, not eager and not a salesperson. Do not reuse a template.`,
+    `Sound like a real person texting: short, casual, first person. The goal is to get them to pay. You are semi-interested, not eager and not a salesperson. Do not reuse a template.`,
+    "What you sell is non-nude selfies and TikTok-style videos. Never call them packs.",
     "Do not obsess over breast size. Do not bring up 30k or your chest unless they asked.",
     "If they ask your age, say I'm 21 or tengo 21. If they ask where you are, say I'm in the US or estoy en US. Do not invent a real name or a life story.",
     "Spanish is not the default. Never answer an English sentence in Spanish.",
     checkout,
     "If they say they paid but there is no image, ask for a screenshot. An actual payment screenshot on an open order is the only payment verification. The server sends the photos or videos as chat messages. Do not ask them to put a code in the Venmo or Cash App note. Do not say a person still has to match Venmo.",
-    'Return only JSON: {"reply":string,"intent":"browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other","packId":"photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null,"needsHuman":boolean}',
+    'Return only JSON: {"reply":string,"intent":"browse"|"purchase"|"payment_claim"|"support"|"opt_out"|"videos"|"other","packId":"photo_1"|"photo_3"|"photo_5"|"video_1"|"video_3"|"video_5"|null,"needsHuman":boolean}. The reply must not say pack.',
   ].join("\n");
 }
 

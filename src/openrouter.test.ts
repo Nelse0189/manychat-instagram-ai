@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildOpenRouterChatRequest, cacheSessionId, maxTokensFor, reasoningFor } from "./openrouter.js";
+import { buildOpenRouterChatRequest, cacheSessionId, maxTokensFor, reasoningFor, tokenUsageFromPayload } from "./openrouter.js";
 import { systemPrompt, turnInstruction, type SalesContext } from "./sales.js";
 import type { ChatMessage } from "./types.js";
 
@@ -24,6 +24,17 @@ test("the code default model is Grok 4.20 with reasoning off", () => {
   assert.equal(maxTokensFor("x-ai/grok-4.20"), 160);
   assert.deepEqual(reasoningFor("openai/gpt-6.1-sol"), { effort: "low" });
   assert.equal(maxTokensFor("openai/gpt-6.1-sol"), 60);
+});
+
+test("provider usage becomes the demo token counts", () => {
+  assert.deepEqual(
+    tokenUsageFromPayload({
+      usage: { prompt_tokens: 412, completion_tokens: 38, total_tokens: 450, cost: 0.00061 },
+    }),
+    { promptTokens: 412, completionTokens: 38, totalTokens: 450, costUsd: 0.00061 },
+  );
+  assert.equal(tokenUsageFromPayload({ choices: [] }), null);
+  assert.equal(tokenUsageFromPayload({ usage: { prompt_tokens: 1 } }), null);
 });
 
 test("the outgoing request caches only the stable system prompt", () => {

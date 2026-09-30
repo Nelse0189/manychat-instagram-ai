@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { config } from "./config.js";
+import { captureTokenUsage, type TokenUsage } from "./openrouter.js";
 import { handleIncoming } from "./handleIncoming.js";
 import { createMemoryStore } from "./memoryStore.js";
 import type { Store } from "./store.js";
@@ -17,7 +18,7 @@ export class TryChatError extends Error {
 }
 
 export function createTryChat(): {
-  reply(sessionId: string, text: string): Promise<{ reply: string; model: string }>;
+  reply(sessionId: string, text: string): Promise<{ reply: string; model: string; usage: TokenUsage | null }>;
 } {
   const sessions = new Map<string, Store>();
 
@@ -42,17 +43,19 @@ export function createTryChat(): {
       }
 
       try {
-        const decision = await handleIncoming(
-          store,
-          {
-            subscriberId: `try:${sessionId}`,
-            text: trimmed,
-            firstName: null,
-            igUsername: null,
-          },
-          { surfaceModelErrors: true },
+        const { result: decision, usage } = await captureTokenUsage(() =>
+          handleIncoming(
+            store,
+            {
+              subscriberId: `try:${sessionId}`,
+              text: trimmed,
+              firstName: null,
+              igUsername: null,
+            },
+            { surfaceModelErrors: true },
+          ),
         );
-        return { reply: decision.reply, model: config.openRouterModel };
+        return { reply: decision.reply, model: config.openRouterModel, usage };
       } catch (error) {
         if (error instanceof TryChatError) throw error;
         const message = error instanceof Error ? error.message : "The model did not answer.";

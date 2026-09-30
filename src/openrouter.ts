@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { config } from "./config.js";
 import { systemPrompt, turnInstruction, type SalesContext } from "./sales.js";
 import type { ChatMessage } from "./types.js";
@@ -29,6 +30,49 @@ export type OpenRouterChatRequest = {
 };
 
 const GROK_420 = "x-ai/grok-4.20";
+
+export type TokenUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number | null;
+};
+
+type UsageSlot = { usage: TokenUsage | null };
+const usageSlots = new AsyncLocalStorage<UsageSlot>();
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function tokenUsageFromPayload(payload: unknown): TokenUsage | null {
+  if (!payload || typeof payload !== "object") return null;
+  const usage = (payload as { usage?: unknown }).usage;
+  if (!usage || typeof usage !== "object") return null;
+  const row = usage as Record<string, unknown>;
+  const promptTokens = finiteNumber(row.prompt_tokens);
+  const completionTokens = finiteNumber(row.completion_tokens);
+  if (promptTokens == null || completionTokens == null) return null;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: finiteNumber(row.total_tokens) ?? promptTokens + completionTokens,
+    costUsd: finiteNumber(row.cost),
+  };
+}
+
+export async function captureTokenUsage<T>(
+  run: () => Promise<T>,
+): Promise<{ result: T; usage: TokenUsage | null }> {
+  const slot: UsageSlot = { usage: null };
+  const result = await usageSlots.run(slot, run);
+  return { result, usage: slot.usage };
+}
+
+function rememberUsage(payload: unknown): void {
+  const slot = usageSlots.getStore();
+  if (slot) slot.usage = tokenUsageFromPayload(payload);
+}
 
 export function reasoningFor(model: string): OpenRouterReasoning {
   // Grok 4.20 treats reasoning as optional and off by default. Leaving it
@@ -161,6 +205,7 @@ export async function completeReply(
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
+  rememberUsage(payload);
   const content = payload.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenRouter returned an empty reply.");
   return content;

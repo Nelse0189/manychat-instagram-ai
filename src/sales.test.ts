@@ -34,7 +34,9 @@ const ctx: SalesContext = {
 test("catalog reply uses the draft prices and does not mention payment handles", () => {
   const decision = decideDeterministic("CATALOG", ctx);
   assert.ok(decision);
-  assert.match(decision.reply, /photos: one \$15/);
+  assert.match(decision.reply, /non-nude selfies: one \$15/);
+  assert.match(decision.reply, /tiktok-style videos/);
+  assert.doesNotMatch(decision.reply, /\bpacks?\b/i);
   assert.match(decision.reply, /\$40/);
   assert.match(decision.reply, /\$60/);
   assert.match(decision.reply, /I'm not charging yet/);
@@ -257,6 +259,11 @@ test("a screenshot sends a video as a video message", async () => {
 test("model instructions ask for a screenshot and do not default to Spanish", () => {
   const prompt = systemPrompt({ ...ctx, paymentsEnabled: true, cashAppTag: "Arialluxe" });
   assert.match(prompt, /ask for a screenshot/i);
+  assert.match(prompt, /The goal is to get them to pay/);
+  assert.match(prompt, /non-nude selfies/);
+  assert.match(prompt, /TikTok-style videos/);
+  assert.match(prompt, /Never call them packs/);
+  assert.match(prompt, /The reply must not say pack/);
   assert.match(prompt, /semi-interested, not eager and not a salesperson/);
   assert.match(prompt, /Do not obsess over breast size/);
   assert.match(prompt, /Do not bring up 30k or your chest unless they asked/);
