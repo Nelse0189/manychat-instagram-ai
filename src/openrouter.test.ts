@@ -34,7 +34,7 @@ test("the outgoing request caches only the stable system prompt", () => {
   const sessionId = cacheSessionId(ctx.shopHandle);
 
   assert.equal(request.body.model, process.env.OPENROUTER_MODEL ?? "openai/gpt-6.1-sol");
-  assert.equal(request.body.max_tokens, 200);
+  assert.equal(request.body.max_tokens, 70);
   assert.deepEqual(request.body.reasoning, { effort: "low" });
   assert.equal(request.body.temperature, 0.8);
   assert.equal(request.body.session_id, sessionId);
