@@ -566,7 +566,7 @@ export function modelSituation(
     notes.push("They already said stop. Do not sell. Keep it to a short goodbye.");
   }
   if (CATALOG.test(folded) || PHOTOS.test(folded) || VIDEOS.test(folded)) {
-    notes.push("They asked what you sell. Answer in your own words. Do not paste a price menu.");
+    notes.push("They asked what you sell or what it costs. Say the selfie and video prices in a normal text. Do not copy a list.");
   }
   const asked = askKey(trimmed);
   if (AGE_ASKS.has(asked)) {
