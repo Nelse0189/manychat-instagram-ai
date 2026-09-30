@@ -1,7 +1,7 @@
 steps:
-  - name: python:3.12-slim
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     secretEnv: ["GITHUB_TOKEN"]
-    entrypoint: python
+    entrypoint: python3
     args: ["scripts/pull_library.py"]
   - name: gcr.io/cloud-builders/docker
     args:
