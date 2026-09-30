@@ -21,6 +21,7 @@ export type OpenRouterChatRequest = {
     temperature: number;
     max_tokens: number;
     session_id: string;
+    reasoning: { effort: "minimal" };
     messages: ChatRequestMessage[];
   };
 };
@@ -73,7 +74,10 @@ export function buildOpenRouterChatRequest(
     body: {
       model: config.openRouterModel,
       temperature: 0.8,
-      max_tokens: 400,
+      // GPT-5 spends this budget on reasoning unless effort is minimal, and a
+      // larger cap is rejected when the key cannot pre-authorize it.
+      max_tokens: 100,
+      reasoning: { effort: "minimal" },
       session_id: sessionId,
       messages,
     },

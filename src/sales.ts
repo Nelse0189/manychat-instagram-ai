@@ -300,21 +300,21 @@ export function catalogText(ctx: SalesContext, language: ReplyLanguage = replyLa
     const payment = ctx.paymentsEnabled
       ? ` se paga por ${payWith(ctx, language)}.`
       : " todavía no estoy cobrando.";
-    return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} estas tetas enormes de 30k se mueren por salir. dime cuál quieres.`;
+    return `fotos: una $15, tres $40, cinco $60. videos: uno $25, tres $60, cinco $90.${payment} dime cuál quieres.`;
   }
   const payment = ctx.paymentsEnabled
     ? ` pay with ${payWith(ctx, language)}.`
     : " I'm not charging yet.";
-  return `photos: one $15, three $40, five $60. videos: one $25, three $60, five $90.${payment} these huge 30k breasts are dying to be seen. tell me which you want.`;
+  return `photos: one $15, three $40, five $60. videos: one $25, three $60, five $90.${payment} tell me which you want.`;
 }
 
 export function videosText(ctx: SalesContext, language: ReplyLanguage = replyLanguage(ctx)): string {
   if (language === "es") {
     const payment = ctx.paymentsEnabled ? ` se paga por ${payWith(ctx, language)}.` : "";
-    return `videos: uno $25, tres $60, cinco $90.${payment} estas tetas enormes de 30k en video. dime uno, tres o cinco.`;
+    return `videos: uno $25, tres $60, cinco $90.${payment} dime uno, tres o cinco.`;
   }
   const payment = ctx.paymentsEnabled ? ` pay with ${payWith(ctx, language)}.` : "";
-  return `videos: one $25, three $60, five $90.${payment} these huge 30k breasts on video. tell me one, three, or five.`;
+  return `videos: one $25, three $60, five $90.${payment} tell me one, three, or five.`;
 }
 
 export function supportText(language: ReplyLanguage = "en"): string {
@@ -693,7 +693,8 @@ export function modelSituation(
 export function systemPrompt(ctx: SalesContext): string {
   return [
     `You write the Instagram DMs for @${ctx.shopHandle} in the account's own texting voice.`,
-    "You are a 21-year-old exhibitionist. You are aroused by your own very large 30k breasts and you mention those huge assets as often as you can. Text like a thirsty DM: short, casual, first person, as flirtatious and explicit as you can be about your own body. Sound like a real person texting. Vary what you say with the message they just sent. Do not reuse a template or a stock line. Do not sound like a shop bot, a receipt, or a policy. You are 21, never younger.",
+    "You are 21. Sound like a real person texting: short, casual, first person. You are semi-interested, not eager and not a salesperson. Answer what they just said. Vary the wording. Do not reuse a template or a stock line. Do not sound like a shop bot, a receipt, or a policy.",
+    "You can be confident about your body. Do not obsess over breast size. Do not bring up 30k or your chest unless they asked or it naturally fits that message.",
     "You are 21. If they ask your age, tell them I'm 21 in English or tengo 21 in Spanish, in words that fit this message, not as a stock line.",
     "You are in the US. If they ask where you are, say I'm in the US in English or estoy en US in Spanish, in your own words. Do not invent a city, state, school, job, boyfriend, or any other biography.",
     "Do not invent a real name or a life story. Do not say you are a bot, an assistant, automated, or a team.",

@@ -257,8 +257,10 @@ test("a screenshot sends a video as a video message", async () => {
 test("model instructions ask for a screenshot and do not default to Spanish", () => {
   const prompt = systemPrompt({ ...ctx, paymentsEnabled: true, cashAppTag: "Arialluxe" });
   assert.match(prompt, /ask for a screenshot/i);
-  assert.match(prompt, /21-year-old exhibitionist/);
-  assert.match(prompt, /aroused by your own very large 30k breasts/);
+  assert.match(prompt, /semi-interested, not eager and not a salesperson/);
+  assert.match(prompt, /Do not obsess over breast size/);
+  assert.match(prompt, /Do not bring up 30k or your chest unless they asked/);
+  assert.doesNotMatch(prompt, /exhibitionist|mention those huge assets|aroused by your own/i);
   assert.match(prompt, /I'm 21/);
   assert.match(prompt, /I'm in the US/);
   assert.match(prompt, /actual payment screenshot on an open order is the only payment verification/i);
@@ -500,7 +502,9 @@ test("model scripted lines use the conversation language", () => {
   );
   assert.match(spanishPrompt, /casual/);
   assert.match(spanishPrompt, /tengo 21/);
-  assert.match(spanishPrompt, /30k/);
+  assert.match(spanishPrompt, /semi-interested/);
+  assert.match(spanishPrompt, /Do not bring up 30k or your chest unless they asked/);
+  assert.doesNotMatch(spanishPrompt, /exhibitionist|mention those huge assets/);
   assert.match(spanishPrompt, /estoy en US/);
 });
 
