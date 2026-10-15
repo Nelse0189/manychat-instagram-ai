@@ -14,6 +14,10 @@ export const config = {
   adminSecret: process.env.ADMIN_SECRET ?? "",
   openRouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
   openRouterModel: process.env.OPENROUTER_MODEL ?? "openai/gpt-5",
+  openRouterFallbackModels: (process.env.OPENROUTER_FALLBACK_MODELS ?? "x-ai/grok-4.7,deepseek/deepseek-v4-pro")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean),
   manychatApiToken: process.env.MANYCHAT_API_TOKEN ?? "",
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "",
   firebaseDatabaseId: process.env.FIREBASE_DATABASE_ID ?? "shop",
@@ -28,6 +32,10 @@ export const config = {
   cloudTasksQueue: process.env.CLOUD_TASKS_QUEUE || "shop-assistant-replies",
   taskTargetUrl: (process.env.TASK_TARGET_URL ?? "").replace(/\/$/, ""),
 };
+
+export function openRouterModelChain(): string[] {
+  return [...new Set([config.openRouterModel, ...config.openRouterFallbackModels])].slice(0, 3);
+}
 
 export function firebaseConfigured(): boolean {
   return Boolean(

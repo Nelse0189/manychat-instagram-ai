@@ -107,10 +107,16 @@ export function parseIncoming(body: unknown): IncomingMessage | null {
   };
 }
 
+export function replyParts(reply: string): string[] {
+  return reply
+    .split(/\r?\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 export function contentMessages(decision: Decision): Array<Record<string, string>> {
   const messages: Array<Record<string, string>> = [];
-  const text = decision.reply.trim();
-  if (text) messages.push({ type: "text", text });
+  for (const text of replyParts(decision.reply)) messages.push({ type: "text", text });
   for (const item of decision.media ?? []) {
     if (messages.length >= 10) break;
     messages.push({ type: item.type, url: item.url });

@@ -1,7 +1,8 @@
 import type { ReplyScheduler } from "./cloudTasks.js";
 import { firstReplyDelayMs, laterReplyDelayMs } from "./firstReplyDelay.js";
-import { composeDeferredReply, recordIncoming } from "./handleIncoming.js";
-import { silentDynamicBlock } from "./manychat.js";
+import { composeDeferredReply, recordIncoming, rememberReply } from "./handleIncoming.js";
+import { replyParts, silentDynamicBlock } from "./manychat.js";
+import { sleep, typingDelayMs } from "./typingDelay.js";
 import type { Store } from "./store.js";
 import type { Decision, IncomingMessage } from "./types.js";
 
@@ -54,10 +55,49 @@ export async function acceptShopMessage(input: {
   return { status: 200, body: silentDynamicBlock() };
 }
 
+/**
+ * Several short bubbles go out one at a time with a typing-sized pause between them. This runs in
+ * the Cloud Task, not in the ManyChat webhook, so it has no 10 second limit. Replies that carry
+ * paid files stay a single atomic send so a retry can never drop or repeat the files.
+ */
+async function sendLikeTyping(
+  input: {
+    subscriberId: string;
+    send: OutboundSender;
+    pause?: (ms: number) => Promise<void>;
+    random?: () => number;
+  },
+  decision: Decision,
+): Promise<Decision> {
+  const parts = replyParts(decision.reply);
+  if ((decision.media?.length ?? 0) > 0 || parts.length <= 1) {
+    await input.send(input.subscriberId, decision);
+    return decision;
+  }
+  const pause = input.pause ?? sleep;
+  let sent = 0;
+  try {
+    for (const [index, part] of parts.entries()) {
+      if (index > 0) {
+        await pause(typingDelayMs({ replyText: part, elapsedMs: 0, random: input.random }));
+      }
+      await input.send(input.subscriberId, { ...decision, reply: part, media: [] });
+      sent += 1;
+    }
+  } catch (error) {
+    if (sent === 0) throw error;
+    console.error(error);
+    return { ...decision, reply: parts.slice(0, sent).join("\n") };
+  }
+  return decision;
+}
+
 export async function deliverScheduledReply(input: {
   store: Store;
   subscriberId: string;
   send: OutboundSender;
+  pause?: (ms: number) => Promise<void>;
+  random?: () => number;
 }): Promise<"sent" | "skipped"> {
   const pending = await input.store.getPendingReply(input.subscriberId);
   if (!pending) return "skipped";
@@ -74,12 +114,13 @@ export async function deliverScheduledReply(input: {
   if (pending && after && after.updatedAt !== pending.updatedAt) {
     decision = await composeDeferredReply(input.store, input.subscriberId);
   }
-  await input.send(input.subscriberId, decision);
+  decision = await sendLikeTyping(input, decision);
   await input.store.addMessage(input.subscriberId, {
     role: "assistant",
     text: decision.reply,
     createdAt: new Date().toISOString(),
   });
+  await rememberReply(input.store, input.subscriberId, decision);
   await input.store.deletePendingReply(input.subscriberId);
   return "sent";
 }

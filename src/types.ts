@@ -34,12 +34,26 @@ export type ChatMessage = {
   createdAt: string;
 };
 
+export type SubscriberMemory = {
+  name: string | null;
+  language: "en" | "es" | null;
+  interests: string[];
+  objections: string[];
+  lastPackShown: PackId | null;
+  pitchCount: number;
+  lastPitchAt: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  userTurns: number;
+};
+
 export type Subscriber = {
   subscriberId: string;
   firstName: string | null;
   igUsername: string | null;
   optedOut: boolean;
   needsHuman: boolean;
+  memory?: SubscriberMemory;
 };
 
 export type IncomingMessage = {

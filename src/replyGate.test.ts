@@ -255,3 +255,75 @@ test("saying they paid does not attach files, and a payment screen does", async 
   assert.ok(messages.some((message) => message.type === "image" || message.type === "video"));
   assert.equal(messages.filter((message) => message.type !== "text").length, ready?.media.length);
 });
+
+test("a reply with several bubbles goes out one at a time with typing pauses", async () => {
+  const store = createMemoryStore();
+  const scheduler = schedulerSpy();
+  setReplyGenerator(async () => "lol hey you\nwhat are you up to tonight");
+  await acceptShopMessage({ store, scheduler, incoming: incoming("hey"), now: NOW, random: () => 0.5 });
+
+  const sent: Decision[] = [];
+  const pauses: number[] = [];
+  await deliverScheduledReply({
+    store,
+    subscriberId: "sub-1",
+    send: async (_id, decision) => {
+      sent.push(decision);
+    },
+    pause: async (ms) => {
+      pauses.push(ms);
+    },
+    random: () => 0.5,
+  });
+
+  assert.deepEqual(sent.map((decision) => decision.reply), ["lol hey you", "what are you up to tonight"]);
+  assert.ok(sent.every((decision) => (decision.media?.length ?? 0) === 0));
+  assert.equal(pauses.length, 1);
+  assert.ok(pauses[0]! > 0 && pauses[0]! <= 4_000);
+  const messages = await store.recentMessages("sub-1", 10);
+  assert.equal(messages.at(-1)?.role, "assistant");
+  assert.equal(messages.at(-1)?.text, "lol hey you\nwhat are you up to tonight");
+});
+
+test("a failure after the first bubble keeps what was sent and does not resend it", async () => {
+  const store = createMemoryStore();
+  const scheduler = schedulerSpy();
+  setReplyGenerator(async () => "one\ntwo\nthree");
+  await acceptShopMessage({ store, scheduler, incoming: incoming("hey"), now: NOW, random: () => 0.5 });
+  let calls = 0;
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await deliverScheduledReply({
+      store,
+      subscriberId: "sub-1",
+      send: async () => {
+        calls += 1;
+        if (calls === 2) throw new Error("ManyChat down");
+      },
+      pause: async () => {},
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(calls, 2);
+  assert.equal((await store.recentMessages("sub-1", 10)).at(-1)?.text, "one");
+  assert.equal(await store.getPendingReply("sub-1"), null);
+});
+
+test("manychat content splits a reply into one text message per bubble", () => {
+  const decision: Decision = {
+    reply: "lol ok\nsend it over",
+    intent: "other",
+    needsHuman: false,
+    useModel: false,
+    packId: null,
+    orderAction: null,
+    media: [{ type: "image", url: "https://x.test/1" }],
+  };
+  assert.deepEqual(contentMessages(decision), [
+    { type: "text", text: "lol ok" },
+    { type: "text", text: "send it over" },
+    { type: "image", url: "https://x.test/1" },
+  ]);
+});

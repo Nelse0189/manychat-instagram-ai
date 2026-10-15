@@ -4,7 +4,16 @@ import { config, firebaseConfigured } from "./config.js";
 import { orderReference } from "./memoryStore.js";
 import { mergePendingReply } from "./pendingReply.js";
 import type { NewOrder, Store } from "./store.js";
-import type { ChatMessage, Order, OrderStatus, OutboundMedia, PackId, PendingReply, Subscriber } from "./types.js";
+import type {
+  ChatMessage,
+  Order,
+  OrderStatus,
+  OutboundMedia,
+  PackId,
+  PendingReply,
+  Subscriber,
+  SubscriberMemory,
+} from "./types.js";
 
 let db: Firestore | null = null;
 
@@ -27,6 +36,27 @@ export function firestoreDb(): Firestore {
   return db;
 }
 
+function memoryFromDoc(data: unknown): SubscriberMemory | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const raw = data as Record<string, unknown>;
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  const text = (value: unknown): string | null => (typeof value === "string" && value ? value : null);
+  const pack = typeof raw.lastPackShown === "string" ? (raw.lastPackShown as PackId) : null;
+  return {
+    name: text(raw.name),
+    language: raw.language === "es" ? "es" : raw.language === "en" ? "en" : null,
+    interests: strings(raw.interests),
+    objections: strings(raw.objections),
+    lastPackShown: pack,
+    pitchCount: typeof raw.pitchCount === "number" ? raw.pitchCount : 0,
+    lastPitchAt: text(raw.lastPitchAt),
+    firstSeenAt: text(raw.firstSeenAt),
+    lastSeenAt: text(raw.lastSeenAt),
+    userTurns: typeof raw.userTurns === "number" ? raw.userTurns : 0,
+  };
+}
+
 function subscriberFromDoc(id: string, data: DocumentData): Subscriber {
   return {
     subscriberId: id,
@@ -34,6 +64,7 @@ function subscriberFromDoc(id: string, data: DocumentData): Subscriber {
     igUsername: typeof data.igUsername === "string" ? data.igUsername : null,
     optedOut: data.optedOut === true,
     needsHuman: data.needsHuman === true,
+    memory: memoryFromDoc(data.memory),
   };
 }
 
@@ -92,12 +123,14 @@ export function createFirestoreStore(): Store {
     },
     async saveSubscriber(subscriber) {
       const now = new Date().toISOString();
+      const { memory, ...rest } = subscriber;
       await firestore
         .collection("subscribers")
         .doc(subscriber.subscriberId)
         .set(
           {
-            ...subscriber,
+            ...rest,
+            ...(memory ? { memory } : {}),
             updatedAt: now,
             createdAt: now,
           },

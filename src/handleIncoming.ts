@@ -2,6 +2,7 @@ import { packById, type PackId } from "./catalog.js";
 import { config } from "./config.js";
 import { releaseOrderFiles } from "./fulfill.js";
 import { orderReference } from "./memoryStore.js";
+import { HISTORY_TURNS, memoryNote, timelineNote, updateMemoryFromReply, updateMemoryFromUser } from "./memory.js";
 import type { Store } from "./store.js";
 import { emptySubscriber } from "./store.js";
 import type { ChatMessage, Decision, IncomingMessage, Order, OutboundMedia } from "./types.js";
@@ -9,9 +10,11 @@ import {
   customerReplyText,
   decideDeterministic,
   decisionFromModel,
+  glitchText,
   modelSituation,
+  pitchContext,
   resolveReplyLanguage,
-  supportText,
+  type PitchContext,
   textShowsPaymentScreenshot,
   type ReplyLanguage,
   type SalesContext,
@@ -37,6 +40,8 @@ function salesContext(
 export type RecordedTurn = {
   ctx: SalesContext;
   history: ChatMessage[];
+  pitched: PitchContext;
+  userAt: string;
   language: ReplyLanguage;
   paymentScreenshot: boolean;
   decision: Decision | null;
@@ -62,12 +67,14 @@ export async function recordIncoming(store: Store, incoming: IncomingMessage): P
   subscriber.igUsername = incoming.igUsername ?? subscriber.igUsername;
 
   const openOrder = await store.latestOpenOrder(incoming.subscriberId);
-  const history = await store.recentMessages(incoming.subscriberId, 12);
+  const history = await store.recentMessages(incoming.subscriberId, HISTORY_TURNS);
   const language = resolveReplyLanguage(incoming.text, history);
   const ctx = salesContext(openOrder, subscriber.optedOut, language);
   const paymentScreenshot =
     incoming.paymentScreenshot === true || textShowsPaymentScreenshot(incoming.text);
-  let decision = decideDeterministic(incoming.text, ctx, { paymentScreenshot });
+  const pitched = pitchContext(history);
+  let decision = decideDeterministic(incoming.text, ctx, { paymentScreenshot, pitched });
+  const userAt = new Date().toISOString();
 
   let media: OutboundMedia[] = [];
   let filesFailed = false;
@@ -107,18 +114,26 @@ export async function recordIncoming(store: Store, incoming: IncomingMessage): P
   }
 
   if (decision) applySubscriberFlags(subscriber, decision);
+  subscriber.memory = updateMemoryFromUser(subscriber.memory, {
+    text: incoming.text,
+    language: incoming.text ? language : null,
+    packId: decision?.packId ?? null,
+    now: userAt,
+  });
   await store.saveSubscriber(subscriber);
   if (incoming.text) {
     await store.addMessage(incoming.subscriberId, {
       role: "user",
       text: incoming.text,
-      createdAt: new Date().toISOString(),
+      createdAt: userAt,
     });
   }
 
   return {
     ctx,
     history,
+    pitched,
+    userAt,
     language,
     paymentScreenshot,
     decision,
@@ -146,17 +161,33 @@ export async function composeCustomerReply(input: {
   paymentScreenshot: boolean;
   quoted: boolean;
   claimed: boolean;
+  pitched?: PitchContext;
+  userAt?: string;
 }): Promise<Decision> {
   let decision = input.decision;
   const situation = modelSituation(input.userText, input.ctx, {
     paymentScreenshot: input.paymentScreenshot && !input.filesReady,
     filesReady: input.filesReady && Boolean(input.ctx.openOrder),
     filesFailed: input.filesFailed,
+    pitched: input.pitched ?? pitchContext(input.history),
   });
-  const situationText =
+  const known = await input.store.getSubscriber(input.subscriberId);
+  const nowIso = new Date().toISOString();
+  const about = [
+    memoryNote(known?.memory, known?.firstName ?? null),
+    timelineNote({ history: input.history, userAt: input.userAt ?? nowIso, now: nowIso }),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const situationText = [
+    situation,
     input.filesReady && !input.ctx.openOrder
-      ? `${situation} A payment-screen image arrived and the files go out as chat media after your text. Do not paste a link or an order code.`
-      : situation;
+      ? "A payment-screen image arrived and the files go out as chat media after your text. Do not paste a link or an order code."
+      : "",
+    about,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (!decision || decision.useModel) {
     try {
@@ -171,7 +202,7 @@ export async function composeCustomerReply(input: {
     } catch {
       if (!decision) {
         decision = {
-          reply: supportText(input.language),
+          reply: glitchText(input.language),
           intent: "support",
           needsHuman: true,
           useModel: false,
@@ -180,14 +211,14 @@ export async function composeCustomerReply(input: {
           media: [],
         };
       } else if (!decision.reply) {
-        decision = { ...decision, reply: supportText(input.language) };
+        decision = { ...decision, reply: glitchText(input.language) };
       }
     }
   }
 
   if (!decision) {
     decision = {
-      reply: supportText(input.language),
+      reply: glitchText(input.language),
       intent: "support",
       needsHuman: true,
       useModel: false,
@@ -196,7 +227,7 @@ export async function composeCustomerReply(input: {
       media: [],
     };
   }
-  if (!decision.reply) decision = { ...decision, reply: supportText(input.language) };
+  if (!decision.reply) decision = { ...decision, reply: glitchText(input.language) };
 
   if (decision.orderAction === "quote" && decision.packId && !input.quoted) {
     const pack = packById(decision.packId);
@@ -233,6 +264,18 @@ export async function composeCustomerReply(input: {
   return decision;
 }
 
+/** Call once, after the reply is actually going out. */
+export async function rememberReply(store: Store, subscriberId: string, decision: Decision): Promise<void> {
+  const subscriber = await store.getSubscriber(subscriberId);
+  if (!subscriber) return;
+  subscriber.memory = updateMemoryFromReply(subscriber.memory, {
+    reply: decision.reply,
+    packId: decision.packId,
+    now: new Date().toISOString(),
+  });
+  await store.saveSubscriber(subscriber);
+}
+
 export async function handleIncoming(store: Store, incoming: IncomingMessage): Promise<Decision> {
   const recorded = await recordIncoming(store, incoming);
   const decision = await composeCustomerReply({
@@ -249,18 +292,21 @@ export async function handleIncoming(store: Store, incoming: IncomingMessage): P
     paymentScreenshot: recorded.paymentScreenshot,
     quoted: recorded.quoted,
     claimed: recorded.claimed,
+    pitched: recorded.pitched,
+    userAt: recorded.userAt,
   });
   await store.addMessage(incoming.subscriberId, {
     role: "assistant",
     text: decision.reply,
     createdAt: new Date().toISOString(),
   });
+  await rememberReply(store, incoming.subscriberId, decision);
   return decision;
 }
 
 export async function composeDeferredReply(store: Store, subscriberId: string): Promise<Decision> {
   const pending = await store.getPendingReply(subscriberId);
-  const all = await store.recentMessages(subscriberId, 12);
+  const all = await store.recentMessages(subscriberId, HISTORY_TURNS + 8);
   let lastUser = -1;
   for (let index = all.length - 1; index >= 0; index -= 1) {
     if (all[index]?.role === "user") {
@@ -269,7 +315,9 @@ export async function composeDeferredReply(store: Store, subscriberId: string): 
     }
   }
   const userText = lastUser >= 0 ? all[lastUser]?.text ?? "" : "";
+  const userAt = lastUser >= 0 ? all[lastUser]?.createdAt ?? "" : "";
   const history = lastUser >= 0 ? all.slice(0, lastUser) : all;
+  const pitched = pitchContext(history);
   const subscriber = await store.getSubscriber(subscriberId);
   const openOrder = await store.latestOpenOrder(subscriberId);
   const language = resolveReplyLanguage(userText, all);
@@ -317,6 +365,7 @@ export async function composeDeferredReply(store: Store, subscriberId: string): 
   } else {
     decision = decideDeterministic(userText, ctx, {
       paymentScreenshot: pending?.sawPaymentScreenshot === true,
+      pitched,
     });
     if (burst && decision?.intent !== "opt_out") {
       decision = decision ? { ...decision, useModel: true, reply: "" } : null;
@@ -337,5 +386,7 @@ export async function composeDeferredReply(store: Store, subscriberId: string): 
     paymentScreenshot: pending?.sawPaymentScreenshot === true,
     quoted: pending?.quoted === true || filesReady,
     claimed: pending?.claimed === true,
+    pitched,
+    userAt,
   });
 }
