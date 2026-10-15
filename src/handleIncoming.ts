@@ -13,6 +13,7 @@ import {
   glitchText,
   modelSituation,
   pitchContext,
+  pitchedPack,
   resolveReplyLanguage,
   type PitchContext,
   textShowsPaymentScreenshot,
@@ -73,7 +74,12 @@ export async function recordIncoming(store: Store, incoming: IncomingMessage): P
   const paymentScreenshot =
     incoming.paymentScreenshot === true || textShowsPaymentScreenshot(incoming.text);
   const pitched = pitchContext(history);
-  let decision = decideDeterministic(incoming.text, ctx, { paymentScreenshot, pitched });
+  const lastPitchedPack = pitchedPack(history);
+  let decision = decideDeterministic(incoming.text, ctx, {
+    paymentScreenshot,
+    pitched,
+    pitchedPack: lastPitchedPack,
+  });
   const userAt = new Date().toISOString();
 
   let media: OutboundMedia[] = [];
@@ -170,6 +176,7 @@ export async function composeCustomerReply(input: {
     filesReady: input.filesReady && Boolean(input.ctx.openOrder),
     filesFailed: input.filesFailed,
     pitched: input.pitched ?? pitchContext(input.history),
+    pitchedPack: pitchedPack(input.history),
   });
   const known = await input.store.getSubscriber(input.subscriberId);
   const nowIso = new Date().toISOString();
@@ -366,6 +373,7 @@ export async function composeDeferredReply(store: Store, subscriberId: string): 
     decision = decideDeterministic(userText, ctx, {
       paymentScreenshot: pending?.sawPaymentScreenshot === true,
       pitched,
+      pitchedPack: pitchedPack(history),
     });
     if (burst && decision?.intent !== "opt_out") {
       decision = decision ? { ...decision, useModel: true, reply: "" } : null;

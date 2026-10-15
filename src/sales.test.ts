@@ -8,6 +8,7 @@ import {
   decisionFromModel,
   decideDeterministic,
   pitchContext,
+  pitchedPack,
   replyBubbles,
   replyIsUsable,
   detectMessageLanguage,
@@ -725,4 +726,24 @@ test("a model failure answers like a person with a glitch, not a support script"
     const reply = ctx.language === "es" ? `vi esto: ${userText}` : `model saw: ${userText || "opened"}`;
     return reply;
   });
+});
+
+test("a plain yes after one pack was named picks that pack", () => {
+  const history = [
+    { role: "user" as const, text: "how much for a photo", createdAt: "" },
+    { role: "assistant" as const, text: "one photo's $15, venmo or cash app", createdAt: "" },
+  ];
+  const named = pitchedPack(history);
+  assert.equal(named, "photo_1");
+  for (const yes of ["ok", "sure", "yeah", "i'll take it", "dale", "ok pls"]) {
+    const decision = decideDeterministic(yes, payCtx, { pitched: pitchContext(history), pitchedPack: named });
+    assert.equal(decision?.packId, "photo_1", yes);
+    assert.equal(decision?.orderAction, "quote", yes);
+  }
+  assert.equal(decideDeterministic("ok", payCtx, { pitchedPack: null }), null);
+  assert.equal(decideDeterministic("ok lemme think about it", payCtx, { pitchedPack: named }), null);
+  assert.equal(
+    pitchedPack([{ role: "assistant", text: "one photo is $15 and three photos is $40", createdAt: "" }]),
+    null,
+  );
 });

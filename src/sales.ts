@@ -549,19 +549,30 @@ export function pitchContext(history: ChatMessage[]): PitchContext {
   return video && !photo ? "video" : "photo";
 }
 
+const PACK_PHRASES: Array<[RegExp, PackId]> = [
+  [/\b(five videos|5 videos|five video|cinco videos|cinco video)\b/, "video_5"],
+  [/\b(three videos|3 videos|three video|tres videos|tres video)\b/, "video_3"],
+  [/\b(one video|1 video|single video|un video|uno video)\b/, "video_1"],
+  [/\b(five photos|5 photos|five photo|photo pack of five|cinco fotos|5 fotos|cinco foto)\b/, "photo_5"],
+  [/\b(three photos|3 photos|three photo|photo pack of three|tres fotos|3 fotos|tres foto)\b/, "photo_3"],
+  [/\b(one photo|1 photo|single photo|una foto|1 foto|un foto|uno foto)\b/, "photo_1"],
+];
+
 function explicitPack(value: string): PackId | null {
-  if (/\b(five videos|5 videos|five video|cinco videos|cinco video)\b/.test(value)) return "video_5";
-  if (/\b(three videos|3 videos|three video|tres videos|tres video)\b/.test(value)) return "video_3";
-  if (/\b(one video|1 video|single video|un video|uno video)\b/.test(value)) return "video_1";
-  if (/\b(five photos|5 photos|five photo|photo pack of five|cinco fotos|5 fotos|cinco foto)\b/.test(value)) {
-    return "photo_5";
-  }
-  if (/\b(three photos|3 photos|three photo|photo pack of three|tres fotos|3 fotos|tres foto)\b/.test(value)) {
-    return "photo_3";
-  }
-  if (/\b(one photo|1 photo|single photo|una foto|1 foto|un foto|uno foto)\b/.test(value)) return "photo_1";
-  return null;
+  return PACK_PHRASES.find(([pattern]) => pattern.test(value))?.[1] ?? null;
 }
+
+/** The one pack the last assistant message named, if it named exactly one. */
+export function pitchedPack(history: ChatMessage[]): PackId | null {
+  const last = [...history].reverse().find((message) => message.role === "assistant");
+  if (!last) return null;
+  const value = fold(last.text);
+  const named = new Set(PACK_PHRASES.filter(([pattern]) => pattern.test(value)).map(([, id]) => id));
+  return named.size === 1 ? [...named][0]! : null;
+}
+
+const AFFIRMATION =
+  /^(?:ok(?:ay)?|yes|yeah|yea|yep|yup|sure|deal|bet|ya|si|dale|vale|listo|sounds good|do it|lets do it|let's do it|i'?ll take it|ill take it|i want it|take it|me lo llevo|lo quiero|esa|ese)(?:\s+(?:pls|please|plz|porfa|lets do it|let's do it|dale))?$/;
 
 const BARE_COUNTS: Record<string, 1 | 3 | 5> = {
   "1": 1,
@@ -575,6 +586,18 @@ const BARE_COUNTS: Record<string, 1 | 3 | 5> = {
   five: 5,
   cinco: 5,
 };
+
+function packChoice(
+  text: string,
+  input: { pitched?: PitchContext; pitchedPack?: PackId | null },
+): PackId | null {
+  const direct = packFromText(text, input.pitched ?? null);
+  if (direct) return direct;
+  if (input.pitchedPack && AFFIRMATION.test(fold(text).replace(/[!?.,]+/g, " ").replace(/\s+/g, " ").trim())) {
+    return input.pitchedPack;
+  }
+  return null;
+}
 
 function packFromText(text: string, pitched: PitchContext = null): PackId | null {
   const value = fold(text).replace(/[!?.,]+/g, " ").replace(/\s+/g, " ").trim();
@@ -624,7 +647,7 @@ export function asksIfBot(text: string): boolean {
 export function decideDeterministic(
   text: string,
   ctx: SalesContext,
-  input: { paymentScreenshot?: boolean; pitched?: PitchContext } = {},
+  input: { paymentScreenshot?: boolean; pitched?: PitchContext; pitchedPack?: PackId | null } = {},
 ): Decision | null {
   const trimmed = text.trim();
   const folded = fold(trimmed);
@@ -715,7 +738,7 @@ export function decideDeterministic(
     return decision({ reply: videosText(ctx, language), intent: "videos", useModel: true });
   }
 
-  const packId = packFromText(trimmed, input.pitched ?? null);
+  const packId = packChoice(trimmed, input);
   if (packId) {
     const pack = packById(packId)!;
     if (!ctx.paymentsEnabled) {
@@ -766,6 +789,7 @@ export function modelSituation(
     filesReady: boolean;
     filesFailed: boolean;
     pitched?: PitchContext;
+    pitchedPack?: PackId | null;
   },
 ): string {
   const trimmed = text.trim();
@@ -803,7 +827,7 @@ export function modelSituation(
   } else if (PAID.test(folded) || claimsPaymentScreenshot(trimmed)) {
     notes.push("They said they paid or mentioned a screenshot, and no payment-screen image arrived. Do not say the files were sent.");
   }
-  const packId = packFromText(trimmed, flags.pitched ?? null);
+  const packId = packChoice(trimmed, flags);
   if (packId && ctx.paymentsEnabled) {
     const pack = packById(packId);
     if (pack) {
